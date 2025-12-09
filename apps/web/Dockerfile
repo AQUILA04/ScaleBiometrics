@@ -42,10 +42,9 @@ RUN addgroup -g 1001 -S nodejs && \
     adduser -u 1001 -S nextjs -G nodejs
 
 # Copy built app from builder stage
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Change ownership
 RUN chown -R nextjs:nodejs /app
@@ -57,4 +56,4 @@ EXPOSE 3000
 
 ENV PORT=3000
 
-CMD ["node_modules/.bin/next", "start"]
+CMD ["node", "server.js"]
