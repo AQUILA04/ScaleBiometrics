@@ -9,6 +9,6 @@ import org.springframework.scheduling.annotation.EnableAsync;
 public class ScaleBiometricsApiApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(ScaleBiometricsApiApplication.java, args);
+        SpringApplication.run(ScaleBiometricsApiApplication.class, args);
     }
 }
