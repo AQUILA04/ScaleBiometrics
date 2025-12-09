@@ -1,0 +1,126 @@
+spring:
+  application:
+    name: scalebiometrics-api
+  
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:scalebiometrics}
+    username: ${DB_USER:scalebiometrics}
+    password: ${DB_PASSWORD:scalebiometrics_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: public
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+  
+  liquibase:
+    enabled: true
+    change-log: classpath:db/migration/master-changelog.xml
+    default-schema: public
+  
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 60000ms
+  
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: scalebiometrics-api
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/scalebiometrics}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/scalebiometrics/protocol/openid-connect/certs}
+
+server:
+  port: ${SERVER_PORT:8081}
+  servlet:
+    context-path: /api
+  compression:
+    enabled: true
+  http2:
+    enabled: true
+
+# MinIO Configuration
+minio:
+  url: ${MINIO_URL:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket-name: ${MINIO_BUCKET:biometric-images}
+
+# gRPC Configuration
+grpc:
+  server:
+    port: ${GRPC_PORT:9090}
+  client:
+    worker:
+      address: ${WORKER_ADDRESS:static://localhost:9091}
+      negotiation-type: plaintext
+
+# Application Configuration
+app:
+  multi-tenancy:
+    enabled: true
+    schema-prefix: t_
+  matching:
+    threshold: ${MATCHING_THRESHOLD:40}
+    max-workers: ${MAX_WORKERS:4}
+  fingerprint:
+    max-count: 10
+    min-quality: 20
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.scalebiometrics: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

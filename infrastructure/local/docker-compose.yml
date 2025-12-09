@@ -1,0 +1,222 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: scalebiometrics-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: scalebiometrics
+      POSTGRES_USER: scalebiometrics
+      POSTGRES_PASSWORD: scalebiometrics_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - scalebiometrics-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scalebiometrics -d scalebiometrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: scalebiometrics-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - scalebiometrics-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Kafka (with KRaft mode - no Zookeeper needed)
+  kafka:
+    image: bitnami/kafka:3.6
+    container_name: scalebiometrics-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      # KRaft settings
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Listeners
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      # Cluster ID
+      KAFKA_KRAFT_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      # Auto-create topics
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - scalebiometrics-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: scalebiometrics-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - scalebiometrics-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Keycloak IAM
+  keycloak:
+    build:
+      context: ../keycloak
+      dockerfile: Dockerfile
+    container_name: scalebiometrics-keycloak
+    restart: unless-stopped
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/scalebiometrics
+      KC_DB_USERNAME: scalebiometrics
+      KC_DB_PASSWORD: scalebiometrics_password
+      KC_DB_SCHEMA: keycloak
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      KC_HTTPS_PORT: 8443
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: false
+      KC_HTTP_ENABLED: true
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - scalebiometrics-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+
+  # MailDev - Email Testing
+  maildev:
+    image: maildev/maildev:latest
+    container_name: scalebiometrics-maildev
+    restart: unless-stopped
+    ports:
+      - "1080:1080"  # Web UI
+      - "1025:1025"  # SMTP Server
+    networks:
+      - scalebiometrics-network
+    environment:
+      MAILDEV_INCOMING_USER: ""
+      MAILDEV_INCOMING_PASS: ""
+
+  # API Gateway (Backend)
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+    container_name: scalebiometrics-api
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+      - "9090:9090"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: scalebiometrics
+      DB_USER: scalebiometrics
+      DB_PASSWORD: scalebiometrics_password
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/scalebiometrics
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/scalebiometrics/protocol/openid-connect/certs
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - scalebiometrics-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/api/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Web Dashboard (Frontend)
+  web:
+    build:
+      context: ../../apps/web
+      dockerfile: Dockerfile
+    container_name: scalebiometrics-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8081/api
+      NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8080
+      NEXT_PUBLIC_KEYCLOAK_REALM: scalebiometrics
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: scalebiometrics-web
+    depends_on:
+      - api
+    networks:
+      - scalebiometrics-network
+
+networks:
+  scalebiometrics-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  kafka_data:
+    driver: local
+  minio_data:
+    driver: local
