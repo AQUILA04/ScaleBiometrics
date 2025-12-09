@@ -1,0 +1,170 @@
+{
+  "id": "scalebiometrics",
+  "realm": "scalebiometrics",
+  "displayName": "ScaleBiometrics",
+  "displayNameHtml": "<div class=\"kc-logo-text\"><span>ScaleBiometrics</span></div>",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "rememberMe": true,
+  "verifyEmail": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "defaultSignatureAlgorithm": "RS256",
+  "offlineSessionMaxLifespan": 5184000,
+  "offlineSessionMaxLifespanEnabled": false,
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "ssoSessionIdleTimeoutRememberMe": 0,
+  "ssoSessionMaxLifespanRememberMe": 0,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "actionTokenGeneratedByAdminLifespan": 43200,
+  "actionTokenGeneratedByUserLifespan": 300,
+  "loginTheme": "scalebiometrics",
+  "accountTheme": "scalebiometrics",
+  "adminTheme": "keycloak",
+  "emailTheme": "keycloak",
+  "roles": {
+    "realm": [
+      {
+        "name": "superadmin",
+        "description": "Super Administrator with global access",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "tenant_admin",
+        "description": "Tenant Administrator with tenant-scoped access",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "api_user",
+        "description": "API User for programmatic access",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "scalebiometrics-api",
+      "name": "ScaleBiometrics API",
+      "description": "Backend API service account",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "**GENERATED**",
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "300",
+        "client.secret.creation.time": "0"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "tenant_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "scalebiometrics-web",
+      "name": "ScaleBiometrics Web Dashboard",
+      "description": "Next.js web application",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "https://app.scalebiometrics.com/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "https://app.scalebiometrics.com"
+      ],
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "tenant_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "superadmin",
+      "enabled": true,
+      "email": "admin@scalebiometrics.com",
+      "emailVerified": true,
+      "firstName": "Super",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "SuperAdmin@123",
+          "temporary": true
+        }
+      ],
+      "realmRoles": ["superadmin"],
+      "attributes": {
+        "tenant_id": ["*"]
+      }
+    }
+  ]
+}
