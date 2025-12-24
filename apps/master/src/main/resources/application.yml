@@ -1,6 +1,6 @@
 spring:
   application:
-    name: scalebiometrics-api
+    name: scalebiometrics-master
   
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
@@ -11,11 +11,9 @@ spring:
     password: ${DB_PASSWORD:scalebiometrics_password}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
+      maximum-pool-size: 15
+      minimum-idle: 3
       connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
   
   jpa:
     hibernate:
@@ -23,34 +21,19 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        default_schema: public
-        jdbc:
-          batch_size: 20
-        order_inserts: true
-        order_updates: true
     open-in-view: false
-  
-  liquibase:
-    enabled: true
-    change-log: classpath:db/migration/master-changelog.xml
-    default-schema: public
   
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
-      timeout: 60000ms
   
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: scalebiometrics-api
+      group-id: scalebiometrics-master
       auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "*"
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -63,56 +46,59 @@ spring:
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/scalebiometrics/protocol/openid-connect/certs}
 
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${SERVER_PORT:8082}
   servlet:
     context-path: /api
-  compression:
-    enabled: true
-  http2:
-    enabled: true
-
-# MinIO Configuration
-minio:
-  url: ${MINIO_URL:http://localhost:9000}
-  access-key: ${MINIO_ACCESS_KEY:minioadmin}
-  secret-key: ${MINIO_SECRET_KEY:minioadmin}
-  bucket-name: ${MINIO_BUCKET:biometric-images}
 
 # gRPC Configuration
 grpc:
   server:
-    port: ${GRPC_PORT:9090}
+    port: ${GRPC_PORT:9091}
+    enable-keep-alive: true
+    keep-alive-time: 30s
+    keep-alive-timeout: 10s
   client:
-    master:
-      address: ${MASTER_ADDRESS:static://localhost:9091}
-      negotiation-type: plaintext
     worker:
       address: ${WORKER_ADDRESS:static://localhost:9092}
       negotiation-type: plaintext
 
-# Application Configuration
-app:
-  multi-tenancy:
+# Master Orchestrator Configuration
+master:
+  # Leader Election
+  leader-election:
     enabled: true
-    schema-prefix: t_
-  matching:
-    threshold: ${MATCHING_THRESHOLD:40}
-    max-workers: ${MAX_WORKERS:4}
-    top-k: ${MATCHING_TOP_K:10}
-    hnsw:
-      enabled: true
-      m: ${HNSW_M:16}
-      ef-construction: ${HNSW_EF_CONSTRUCTION:200}
-      ef-search: ${HNSW_EF_SEARCH:100}
-  fingerprint:
-    max-count: 10
-    min-quality: 20
-  offheap:
+    lease-duration-ms: 30000
+    renew-deadline-ms: 20000
+  
+  # Scatter-Gather Configuration
+  scatter-gather:
+    timeout-ms: ${SCATTER_GATHER_TIMEOUT_MS:1500}
+    max-parallel-requests: ${MAX_PARALLEL_REQUESTS:100}
+  
+  # Circuit Breaker Configuration
+  circuit-breaker:
     enabled: true
-    max-size-gb: ${OFFHEAP_MAX_SIZE_GB:8}
-  performance:
-    target-latency-ms: 2000
-    p95-threshold-ms: 2000
+    failure-threshold: 5
+    success-threshold: 2
+    timeout-ms: 60000
+  
+  # Worker Discovery
+  worker-discovery:
+    enabled: true
+    refresh-interval-ms: 30000
+  
+  # Request Routing
+  routing:
+    strategy: ${ROUTING_STRATEGY:HASH}  # HASH, ROUND_ROBIN, LEAST_LOADED
+    replication-factor: ${REPLICATION_FACTOR:1}
+
+# Kafka Topics Configuration
+kafka:
+  topics:
+    matching-requests: matching-requests
+    matching-results: matching-results
+    template-updates: template-updates
+    worker-heartbeat: worker-heartbeat
 
 # Actuator
 management:
@@ -122,7 +108,7 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: when-authorized
+      show-details: always
   metrics:
     export:
       prometheus:
@@ -141,4 +127,3 @@ logging:
     com.scalebiometrics: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [%X{trace_id}] - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [%X{trace_id}] - %msg%n"

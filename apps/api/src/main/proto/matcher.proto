@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package com.scalebiometrics.proto;
+
+option java_multiple_files = true;
+option java_package = "com.scalebiometrics.proto.matcher";
+option java_outer_classname = "MatcherProto";
+
+/**
+ * gRPC service for biometric matching operations.
+ * Implements Master-Worker communication for distributed matching engine.
+ */
+service MatcherService {
+  // 1:N deduplication matching
+  rpc Match1N (MatchRequest) returns (MatchResponse);
+  
+  // 1:1 verification matching
+  rpc Match1To1 (VerificationRequest) returns (VerificationResponse);
+  
+  // Health check
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
+  
+  // Get worker status and metrics
+  rpc GetWorkerStatus (StatusRequest) returns (StatusResponse);
+}
+
+/**
+ * Request for 1:N deduplication matching.
+ * Probe fingerprint matched against all templates in worker's shard.
+ */
+message MatchRequest {
+  string trace_id = 1;
+  string tenant_id = 2;
+  string probe_rid = 3;
+  bytes probe_template = 4; // SourceAFIS binary template
+  float[] probe_embedding = 5; // HNSW embedding vector
+  int32 top_k = 6; // Number of candidates to return (default: 10)
+  int32 threshold = 7; // Minimum matching score (default: 40)
+  int64 timeout_ms = 8; // Request timeout in milliseconds
+}
+
+/**
+ * Response for 1:N matching.
+ * Contains ranked list of candidates with scores.
+ */
+message MatchResponse {
+  string trace_id = 1;
+  string worker_id = 2;
+  MatchStatus status = 3;
+  repeated Candidate candidates = 4;
+  int64 matching_time_ms = 5;
+  string error_message = 6;
+  WorkerMetrics worker_metrics = 7;
+
+  enum MatchStatus {
+    SUCCESS = 0;
+    NO_MATCH = 1;
+    PARTIAL_MATCH = 2;
+    WORKER_ERROR = 3;
+    TIMEOUT = 4;
+  }
+}
+
+/**
+ * Candidate match result with scores.
+ */
+message Candidate {
+  string target_rid = 1;
+  int32 hnn_score = 2; // ANN pre-filtering score (0-100)
+  int32 exact_score = 3; // SourceAFIS exact match score (0-100)
+  int32 final_score = 4; // Combined score
+  bool is_match = 5; // Above threshold
+}
+
+/**
+ * Request for 1:1 verification matching.
+ * Probe fingerprint matched against specific target template.
+ */
+message VerificationRequest {
+  string trace_id = 1;
+  string tenant_id = 2;
+  string probe_rid = 3;
+  bytes probe_template = 4;
+  string target_rid = 5;
+  bytes target_template = 6;
+  int32 threshold = 7;
+  int64 timeout_ms = 8;
+}
+
+/**
+ * Response for 1:1 verification.
+ */
+message VerificationResponse {
+  string trace_id = 1;
+  string worker_id = 2;
+  bool is_match = 3;
+  int32 score = 4;
+  int64 matching_time_ms = 5;
+  string error_message = 6;
+}
+
+/**
+ * Health check request.
+ */
+message HealthCheckRequest {
+  string worker_id = 1;
+}
+
+/**
+ * Health check response.
+ */
+message HealthCheckResponse {
+  string worker_id = 1;
+  bool is_healthy = 2;
+  WorkerMetrics metrics = 3;
+  string error_message = 4;
+}
+
+/**
+ * Status request.
+ */
+message StatusRequest {
+  string worker_id = 1;
+}
+
+/**
+ * Worker status and metrics.
+ */
+message StatusResponse {
+  string worker_id = 1;
+  string status = 2; // HEALTHY, DEGRADED, UNHEALTHY
+  WorkerMetrics metrics = 3;
+  int64 uptime_ms = 4;
+}
+
+/**
+ * Worker performance metrics.
+ */
+message WorkerMetrics {
+  int64 total_matches = 1;
+  int64 total_errors = 2;
+  double avg_latency_ms = 3;
+  double p95_latency_ms = 4;
+  double p99_latency_ms = 5;
+  int64 heap_memory_bytes = 6;
+  int64 offheap_memory_bytes = 7;
+  int64 hnsw_index_size_bytes = 8;
+  int32 cpu_usage_percent = 9;
+  int32 grpc_queue_depth = 10;
+  int64 kafka_lag = 11;
+}
