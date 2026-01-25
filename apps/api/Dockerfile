@@ -5,11 +5,8 @@ FROM maven:3.9-eclipse-temurin-21-alpine AS build
 
 WORKDIR /build
 
-# Copy the entire project structure
-COPY pom.xml .
-COPY .mvn .mvn
-COPY packages packages
-COPY apps apps
+# Copy the entire project structure from the root context
+COPY . .
 
 # Download dependencies
 RUN mvn dependency:go-offline -B
