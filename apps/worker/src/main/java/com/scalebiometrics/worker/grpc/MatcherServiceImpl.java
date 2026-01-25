@@ -2,6 +2,7 @@ package com.scalebiometrics.worker.grpc;
 
 import com.scalebiometrics.core.domain.Fingerprint;
 import com.scalebiometrics.core.domain.MatchResult;
+import com.scalebiometrics.proto.matcher.*;
 import com.scalebiometrics.worker.engine.HybridMatchingEngine;
 import io.grpc.stub.StreamObserver;
 import lombok.extern.slf4j.Slf4j;
@@ -14,10 +15,11 @@ import java.util.List;
  * gRPC MatcherService Implementation
  * 
  * Provides gRPC endpoints for Master-Worker communication
+ * Implements hybrid matching with HNSW + SourceAFIS
  */
 @Slf4j
 @Service
-public class MatcherServiceImpl extends MatcherGrpc.MatcherImplBase {
+public class MatcherServiceImpl extends MatcherServiceGrpc.MatcherServiceImplBase {
 
     private final HybridMatchingEngine matchingEngine;
 
@@ -26,15 +28,18 @@ public class MatcherServiceImpl extends MatcherGrpc.MatcherImplBase {
     }
 
     /**
-     * 1:N Matching RPC
+     * 1:N Matching RPC - Deduplication
+     * Matches probe fingerprint against all templates in worker's shard
      */
     @Override
-    public void match1N(Match1NRequest request, StreamObserver<Match1NResponse> responseObserver) {
+    public void match1N(MatchRequest request, StreamObserver<MatchResponse> responseObserver) {
+        long startTime = System.currentTimeMillis();
         try {
-            log.info("Received 1:N matching request - Probe RID: {}", request.getProbeRid());
+            log.info("Received 1:N matching request - Trace ID: {}, Probe RID: {}", 
+                    request.getTraceId(), request.getProbeRid());
 
             // Convert gRPC request to domain object
-            Fingerprint probeFingerprint = convertToFingerprint(request.getProbeFingerprint());
+            Fingerprint probeFingerprint = convertToFingerprint(request.getProbeTemplate());
 
             // Perform matching
             MatchResult matchResult = matchingEngine.match1N(
@@ -43,50 +48,63 @@ public class MatcherServiceImpl extends MatcherGrpc.MatcherImplBase {
             );
 
             // Convert domain result to gRPC response
-            Match1NResponse response = convertToMatch1NResponse(matchResult);
+            MatchResponse response = convertToMatch1NResponse(matchResult, request.getTraceId());
 
             responseObserver.onNext(response);
             responseObserver.onCompleted();
 
-            log.info("1:N matching completed - Trace ID: {}", matchResult.getTraceId());
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("1:N matching completed in {}ms - Trace ID: {}", duration, request.getTraceId());
 
         } catch (Exception e) {
-            log.error("Error in 1:N matching", e);
-            responseObserver.onError(io.grpc.Status.INTERNAL
-                    .withDescription("Matching failed: " + e.getMessage())
-                    .asException());
+            log.error("Error in 1:N matching - Trace ID: {}", request.getTraceId(), e);
+            MatchResponse errorResponse = MatchResponse.newBuilder()
+                    .setTraceId(request.getTraceId())
+                    .setStatus(MatchResponse.MatchStatus.WORKER_ERROR)
+                    .setErrorMessage(e.getMessage())
+                    .setMatchingTimeMs(System.currentTimeMillis() - startTime)
+                    .build();
+            responseObserver.onNext(errorResponse);
+            responseObserver.onCompleted();
         }
     }
 
     /**
-     * 1:1 Matching RPC
+     * 1:1 Verification RPC
+     * Matches probe fingerprint against specific target template
      */
     @Override
-    public void match1To1(Match1To1Request request, StreamObserver<Match1To1Response> responseObserver) {
+    public void match1To1(VerificationRequest request, StreamObserver<VerificationResponse> responseObserver) {
+        long startTime = System.currentTimeMillis();
         try {
-            log.info("Received 1:1 matching request - Probe: {}, Target: {}", 
-                    request.getProbeRid(), request.getTargetRid());
+            log.info("Received 1:1 verification request - Trace ID: {}, Probe RID: {}, Target RID: {}", 
+                    request.getTraceId(), request.getProbeRid(), request.getTargetRid());
 
-            // Convert gRPC requests to domain objects
-            Fingerprint probeFingerprint = convertToFingerprint(request.getProbeFingerprint());
-            Fingerprint targetFingerprint = convertToFingerprint(request.getTargetFingerprint());
+            // Convert gRPC request to domain objects
+            Fingerprint probeFingerprint = convertToFingerprint(request.getProbeTemplate());
+            Fingerprint targetFingerprint = convertToFingerprint(request.getTargetTemplate());
 
             // Perform matching
             MatchResult matchResult = matchingEngine.match1To1(probeFingerprint, targetFingerprint);
 
             // Convert domain result to gRPC response
-            Match1To1Response response = convertToMatch1To1Response(matchResult);
+            VerificationResponse response = convertToVerificationResponse(matchResult, request.getTraceId());
 
             responseObserver.onNext(response);
             responseObserver.onCompleted();
 
-            log.info("1:1 matching completed - Trace ID: {}", matchResult.getTraceId());
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("1:1 verification completed in {}ms - Trace ID: {}", duration, request.getTraceId());
 
         } catch (Exception e) {
-            log.error("Error in 1:1 matching", e);
-            responseObserver.onError(io.grpc.Status.INTERNAL
-                    .withDescription("Matching failed: " + e.getMessage())
-                    .asException());
+            log.error("Error in 1:1 verification - Trace ID: {}", request.getTraceId(), e);
+            VerificationResponse errorResponse = VerificationResponse.newBuilder()
+                    .setTraceId(request.getTraceId())
+                    .setErrorMessage(e.getMessage())
+                    .setMatchingTimeMs(System.currentTimeMillis() - startTime)
+                    .build();
+            responseObserver.onNext(errorResponse);
+            responseObserver.onCompleted();
         }
     }
 
@@ -96,10 +114,11 @@ public class MatcherServiceImpl extends MatcherGrpc.MatcherImplBase {
     @Override
     public void healthCheck(HealthCheckRequest request, StreamObserver<HealthCheckResponse> responseObserver) {
         try {
+            log.debug("Health check request from worker: {}", request.getWorkerId());
+            
             HealthCheckResponse response = HealthCheckResponse.newBuilder()
-                    .setStatus("HEALTHY")
-                    .setMessage("Worker is healthy")
-                    .setTimestamp(System.currentTimeMillis())
+                    .setWorkerId(request.getWorkerId())
+                    .setIsHealthy(true)
                     .build();
 
             responseObserver.onNext(response);
@@ -107,9 +126,13 @@ public class MatcherServiceImpl extends MatcherGrpc.MatcherImplBase {
 
         } catch (Exception e) {
             log.error("Error in health check", e);
-            responseObserver.onError(io.grpc.Status.INTERNAL
-                    .withDescription("Health check failed")
-                    .asException());
+            HealthCheckResponse errorResponse = HealthCheckResponse.newBuilder()
+                    .setWorkerId(request.getWorkerId())
+                    .setIsHealthy(false)
+                    .setErrorMessage(e.getMessage())
+                    .build();
+            responseObserver.onNext(errorResponse);
+            responseObserver.onCompleted();
         }
     }
 
@@ -117,86 +140,83 @@ public class MatcherServiceImpl extends MatcherGrpc.MatcherImplBase {
      * Get Worker Status RPC
      */
     @Override
-    public void getWorkerStatus(GetWorkerStatusRequest request, StreamObserver<WorkerMetrics> responseObserver) {
+    public void getWorkerStatus(StatusRequest request, StreamObserver<StatusResponse> responseObserver) {
         try {
-            // Get metrics from matching engine
-            var indexStats = matchingEngine.getIndexStatistics();
+            log.debug("Status request from worker: {}", request.getWorkerId());
 
             WorkerMetrics metrics = WorkerMetrics.newBuilder()
-                    .setWorkerId("worker-1")  // Should come from configuration
-                    .setTotalMatches(indexStats.getQueryCount())
-                    .setAvgLatencyMs((long) indexStats.getAvgQueryTimeMs())
-                    .setIndexSizeBytes(indexStats.getIndexSizeBytes())
-                    .setOffheapMemoryBytes(indexStats.getOffHeapMemoryBytes())
-                    .setTotalVectors(indexStats.getTotalVectors())
-                    .setTimestamp(System.currentTimeMillis())
+                    .setTotalMatches(matchingEngine.getTotalMatches())
+                    .setTotalErrors(matchingEngine.getTotalErrors())
+                    .setAvgLatencyMs(matchingEngine.getAverageLatency())
+                    .setP95LatencyMs(matchingEngine.getP95Latency())
+                    .setP99LatencyMs(matchingEngine.getP99Latency())
                     .build();
 
-            responseObserver.onNext(metrics);
+            StatusResponse response = StatusResponse.newBuilder()
+                    .setWorkerId(request.getWorkerId())
+                    .setStatus("HEALTHY")
+                    .setMetrics(metrics)
+                    .setUptimeMs(matchingEngine.getUptime())
+                    .build();
+
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
 
         } catch (Exception e) {
-            log.error("Error getting worker status", e);
-            responseObserver.onError(io.grpc.Status.INTERNAL
-                    .withDescription("Failed to get worker status")
-                    .asException());
+            log.error("Error in status check", e);
+            StatusResponse errorResponse = StatusResponse.newBuilder()
+                    .setWorkerId(request.getWorkerId())
+                    .setStatus("UNHEALTHY")
+                    .build();
+            responseObserver.onNext(errorResponse);
+            responseObserver.onCompleted();
         }
     }
 
     /**
-     * Convert gRPC Fingerprint to domain Fingerprint
+     * Convert gRPC bytes to domain Fingerprint object
      */
-    private Fingerprint convertToFingerprint(FingerprintProto proto) {
-        return Fingerprint.builder()
-                .rid(proto.getRid())
-                .fingerIndex(proto.getFingerIndex())
-                .imageUrl(proto.getImageUrl())
-                .binaryTemplate(proto.getBinaryTemplate().toByteArray())
-                .embeddingVector(proto.getEmbeddingVectorList().stream()
-                        .mapToFloat(f -> f)
-                        .toArray())
-                .quality(proto.getQuality())
-                .status(proto.getStatus())
-                .build();
+    private Fingerprint convertToFingerprint(com.google.protobuf.ByteString template) {
+        Fingerprint fingerprint = new Fingerprint();
+        fingerprint.setTemplate(template.toByteArray());
+        return fingerprint;
     }
 
     /**
      * Convert domain MatchResult to gRPC Match1NResponse
      */
-    private Match1NResponse convertToMatch1NResponse(MatchResult matchResult) {
-        Match1NResponse.Builder builder = Match1NResponse.newBuilder()
-                .setProbeRid(matchResult.getProbeRid())
-                .setStatus(matchResult.getStatus())
-                .setMatchingTimeMs(matchResult.getMatchingTimeMs())
-                .setTraceId(matchResult.getTraceId());
-
-        for (MatchResult.Candidate candidate : matchResult.getCandidates()) {
-            Candidate candidateProto = Candidate.newBuilder()
-                    .setTargetRid(candidate.getTargetRid())
-                    .setHnnScore(candidate.getHnnScore())
-                    .setExactScore(candidate.getExactScore())
-                    .setFinalScore(candidate.getFinalScore())
-                    .setIsMatch(candidate.isMatch())
-                    .build();
-            builder.addCandidates(candidateProto);
+    private MatchResponse convertToMatch1NResponse(MatchResult matchResult, String traceId) {
+        List<MatchResponse.Candidate> candidates = new ArrayList<>();
+        
+        if (matchResult.getCandidates() != null) {
+            for (MatchResult.Candidate candidate : matchResult.getCandidates()) {
+                candidates.add(MatchResponse.Candidate.newBuilder()
+                        .setTargetRid(candidate.getTargetRid())
+                        .setHnnScore(candidate.getHnnScore())
+                        .setExactScore(candidate.getExactScore())
+                        .setFinalScore(candidate.getFinalScore())
+                        .setIsMatch(candidate.isMatch())
+                        .build());
+            }
         }
 
-        return builder.build();
+        return MatchResponse.newBuilder()
+                .setTraceId(traceId)
+                .setStatus(MatchResponse.MatchStatus.SUCCESS)
+                .addAllCandidates(candidates)
+                .setMatchingTimeMs(matchResult.getMatchingTimeMs())
+                .build();
     }
 
     /**
-     * Convert domain MatchResult to gRPC Match1To1Response
+     * Convert domain MatchResult to gRPC VerificationResponse
      */
-    private Match1To1Response convertToMatch1To1Response(MatchResult matchResult) {
-        MatchResult.Candidate candidate = matchResult.getCandidates().get(0);
-
-        return Match1To1Response.newBuilder()
-                .setProbeRid(matchResult.getProbeRid())
-                .setTargetRid(candidate.getTargetRid())
-                .setScore(candidate.getExactScore())
-                .setIsMatch(candidate.isMatch())
+    private VerificationResponse convertToVerificationResponse(MatchResult matchResult, String traceId) {
+        return VerificationResponse.newBuilder()
+                .setTraceId(traceId)
+                .setIsMatch(matchResult.isMatch())
+                .setScore(matchResult.getScore())
                 .setMatchingTimeMs(matchResult.getMatchingTimeMs())
-                .setTraceId(matchResult.getTraceId())
                 .build();
     }
 }
