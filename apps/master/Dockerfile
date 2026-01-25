@@ -8,8 +8,9 @@ WORKDIR /build
 # Copy the entire project structure from the root context
 COPY . .
 
-# Download dependencies
-RUN mvn dependency:go-offline -B
+# Install parent POM and download dependencies
+RUN mvn install -DskipTests -B -pl . && \
+    mvn dependency:go-offline -B -pl apps/master -am
 
 # Build the Master module
 RUN mvn clean package -DskipTests -B -pl apps/master -am
