@@ -1,10 +1,9 @@
 package com.scalebiometrics.worker.engine;
 
+import com.scalebiometrics.core.domain.Fingerprint;
 import com.scalebiometrics.core.exception.BiometricException;
-import io.jvector.jvector.graph.GraphIndex;
-import io.jvector.jvector.graph.RandomAccessVectorValues;
-import io.jvector.jvector.vector.VectorFloat;
-import io.jvector.jvector.vector.types.VectorTypeSupport;
+import com.github.jelmerk.hnswlib.hnswlib;
+import com.github.jelmerk.hnswlib.Index;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -19,7 +18,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * HNSW Index Manager - Manages Hierarchical Navigable Small World index.
+ * HNSW Index Manager - Manages Hierarchical Navigable Small World index using hnswlib-core.
  * 
  * Responsibilities:
  * - Create and maintain HNSW index for approximate nearest neighbor search
@@ -34,6 +33,7 @@ public class HNSWIndexManager {
     private static final int DEFAULT_M = 16;
     private static final int DEFAULT_EF_CONSTRUCTION = 200;
     private static final int DEFAULT_EF_SEARCH = 100;
+    private static final int VECTOR_DIMENSION = 128;  // Standard fingerprint embedding dimension
 
     @Value("${worker.hnsw.m:16}")
     private int m;
@@ -50,11 +50,13 @@ public class HNSWIndexManager {
     @Value("${worker.data.index-path:/tmp/hnsw-index}")
     private String indexPath;
 
-    private GraphIndex<float[]> hnswIndex;
+    private Index<Integer, float[], HNSWCandidate> hnswIndex;
     private final Map<String, Integer> ridToIdMap = new ConcurrentHashMap<>();
     private final Map<Integer, String> idToRidMap = new ConcurrentHashMap<>();
+    private final Map<Integer, Fingerprint> fingerprintCache = new ConcurrentHashMap<>();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private int nextId = 0;
+    private IndexStatistics statistics;
 
     /**
      * Initialize HNSW index
@@ -72,11 +74,18 @@ public class HNSWIndexManager {
                 return;
             }
 
-            // Create new index
-            // Note: JVector GraphIndex creation would be done here
-            // This is a simplified example - actual implementation depends on JVector API
-            
-            log.info("Created new HNSW index");
+            // Create new index using hnswlib-core
+            hnswIndex = new Index<>(
+                    hnswlib.L2,           // Distance metric: L2 (Euclidean)
+                    true,                 // Allow index updates
+                    m,                    // M parameter
+                    efConstruction,       // ef_construction
+                    maxSize,              // Max elements
+                    0                     // Random seed
+            );
+
+            statistics = new IndexStatistics();
+            log.info("Created new HNSW index with max size: {}", maxSize);
 
         } catch (Exception e) {
             log.error("Error initializing HNSW index", e);
@@ -87,60 +96,86 @@ public class HNSWIndexManager {
     }
 
     /**
-     * Add a vector to the index
+     * Add fingerprint to index
      */
-    public void add(String rid, float[] embedding) throws BiometricException {
-        if (embedding == null || embedding.length == 0) {
-            throw new BiometricException("Invalid embedding vector");
-        }
-
+    public void addFingerprint(Fingerprint fingerprint) throws BiometricException {
         try {
             lock.writeLock().lock();
 
-            if (ridToIdMap.containsKey(rid)) {
-                throw new BiometricException("RID already exists in index: " + rid);
+            if (hnswIndex == null) {
+                throw new BiometricException("HNSW index not initialized");
             }
 
-            if (ridToIdMap.size() >= maxSize) {
-                throw new BiometricException("Index size limit reached: " + maxSize);
+            String rid = fingerprint.getRid();
+            if (ridToIdMap.containsKey(rid)) {
+                log.warn("Fingerprint already exists in index: {}", rid);
+                return;
             }
 
             int id = nextId++;
-            ridToIdMap.put(rid, id);
-            idToRidMap.put(id, rid);
+            float[] embedding = fingerprint.getEmbedding();
+
+            if (embedding == null || embedding.length != VECTOR_DIMENSION) {
+                throw new BiometricException("Invalid embedding dimension: expected " + 
+                        VECTOR_DIMENSION + ", got " + (embedding == null ? 0 : embedding.length));
+            }
 
             // Add to HNSW index
-            // hnswIndex.add(id, VectorFloat.create(embedding));
+            hnswIndex.add(id, embedding);
 
-            log.debug("Added vector to HNSW index - RID: {}, ID: {}", rid, id);
+            // Update mappings
+            ridToIdMap.put(rid, id);
+            idToRidMap.put(id, rid);
+            fingerprintCache.put(id, fingerprint);
+
+            // Update statistics
+            statistics.incrementTotalVectors();
+            statistics.setIndexSizeBytes(estimateIndexSize());
+
+            log.debug("Added fingerprint to index: {} (id={})", rid, id);
 
         } catch (Exception e) {
-            log.error("Error adding vector to HNSW index", e);
-            throw new BiometricException("Failed to add vector: " + e.getMessage(), e);
+            log.error("Error adding fingerprint to index", e);
+            throw new BiometricException("Failed to add fingerprint: " + e.getMessage(), e);
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     /**
-     * Remove a vector from the index
-     * Note: HNSW doesn't support efficient deletion, so we mark as deleted
+     * Remove fingerprint from index
      */
-    public void remove(String rid) throws BiometricException {
+    public void removeFingerprint(String rid) throws BiometricException {
         try {
             lock.writeLock().lock();
 
-            Integer id = ridToIdMap.remove(rid);
-            if (id != null) {
-                idToRidMap.remove(id);
-                log.debug("Removed vector from HNSW index - RID: {}, ID: {}", rid, id);
-            } else {
-                log.warn("RID not found in index: {}", rid);
+            if (hnswIndex == null) {
+                throw new BiometricException("HNSW index not initialized");
             }
 
+            Integer id = ridToIdMap.get(rid);
+            if (id == null) {
+                log.warn("Fingerprint not found in index: {}", rid);
+                return;
+            }
+
+            // Remove from HNSW index
+            hnswIndex.remove(id);
+
+            // Update mappings
+            ridToIdMap.remove(rid);
+            idToRidMap.remove(id);
+            fingerprintCache.remove(id);
+
+            // Update statistics
+            statistics.decrementTotalVectors();
+            statistics.setIndexSizeBytes(estimateIndexSize());
+
+            log.debug("Removed fingerprint from index: {}", rid);
+
         } catch (Exception e) {
-            log.error("Error removing vector from HNSW index", e);
-            throw new BiometricException("Failed to remove vector: " + e.getMessage(), e);
+            log.error("Error removing fingerprint from index", e);
+            throw new BiometricException("Failed to remove fingerprint: " + e.getMessage(), e);
         } finally {
             lock.writeLock().unlock();
         }
@@ -149,41 +184,35 @@ public class HNSWIndexManager {
     /**
      * Search for nearest neighbors
      */
-    public List<HNSWCandidate> search(float[] queryVector, int k) throws BiometricException {
-        if (queryVector == null || queryVector.length == 0) {
-            throw new BiometricException("Invalid query vector");
-        }
-
+    public List<HNSWCandidate> search(float[] embedding, int topK) throws BiometricException {
         try {
             lock.readLock().lock();
 
-            if (hnswIndex == null || ridToIdMap.isEmpty()) {
-                return Collections.emptyList();
+            if (hnswIndex == null) {
+                throw new BiometricException("HNSW index not initialized");
             }
 
-            List<HNSWCandidate> candidates = new ArrayList<>();
+            if (embedding == null || embedding.length != VECTOR_DIMENSION) {
+                throw new BiometricException("Invalid embedding dimension");
+            }
 
-            // Perform HNSW search
-            // PriorityQueue<Integer> results = hnswIndex.search(
-            //     VectorFloat.create(queryVector), 
-            //     k, 
-            //     efSearch
-            // );
+            // Search in HNSW index
+            List<Integer> results = hnswIndex.knnQuery(embedding, topK);
 
             // Convert results to candidates
-            // for (Integer id : results) {
-            //     String rid = idToRidMap.get(id);
-            //     if (rid != null) {
-            //         float score = calculateSimilarity(queryVector, id);
-            //         candidates.add(HNSWCandidate.builder()
-            //             .targetRid(rid)
-            //             .score(score)
-            //             .build());
-            //     }
-            // }
-
-            log.debug("HNSW search completed - query vector dim: {}, k: {}, results: {}", 
-                    queryVector.length, k, candidates.size());
+            List<HNSWCandidate> candidates = new ArrayList<>();
+            for (Integer id : results) {
+                String rid = idToRidMap.get(id);
+                if (rid != null) {
+                    // Calculate similarity score (0-100)
+                    float score = calculateSimilarityScore(embedding, id);
+                    candidates.add(HNSWCandidate.builder()
+                            .rid(rid)
+                            .id(id)
+                            .score((int) score)
+                            .build());
+                }
+            }
 
             return candidates;
 
@@ -196,111 +225,21 @@ public class HNSWIndexManager {
     }
 
     /**
-     * Get index size (number of vectors)
+     * Get fingerprint by RID
      */
-    public long getSize() {
-        try {
-            lock.readLock().lock();
-            return ridToIdMap.size();
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    /**
-     * Get index size in bytes (approximate)
-     */
-    public long getSizeBytes() {
-        try {
-            lock.readLock().lock();
-            // Approximate: each vector ~384 bytes (96 floats * 4 bytes) + overhead
-            return ridToIdMap.size() * 512;
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    /**
-     * Persist index to disk
-     */
-    public void persistToDisk() throws BiometricException {
+    public Fingerprint getFingerprint(String rid) {
         try {
             lock.readLock().lock();
 
-            Path path = Paths.get(indexPath);
-            Files.createDirectories(path.getParent());
-
-            // Serialize index metadata
-            try (ObjectOutputStream oos = new ObjectOutputStream(
-                    new FileOutputStream(indexPath + "/index.dat"))) {
-                oos.writeObject(ridToIdMap);
-                oos.writeObject(idToRidMap);
-                oos.writeInt(nextId);
+            Integer id = ridToIdMap.get(rid);
+            if (id == null) {
+                return null;
             }
 
-            log.info("Persisted HNSW index to disk - path: {}", indexPath);
+            return fingerprintCache.get(id);
 
-        } catch (Exception e) {
-            log.error("Error persisting HNSW index", e);
-            throw new BiometricException("Failed to persist index: " + e.getMessage(), e);
         } finally {
             lock.readLock().unlock();
-        }
-    }
-
-    /**
-     * Load index from disk
-     */
-    private boolean loadFromDisk() {
-        try {
-            Path path = Paths.get(indexPath + "/index.dat");
-            if (!Files.exists(path)) {
-                return false;
-            }
-
-            try (ObjectInputStream ois = new ObjectInputStream(
-                    new FileInputStream(indexPath + "/index.dat"))) {
-                @SuppressWarnings("unchecked")
-                Map<String, Integer> loadedRidToIdMap = (Map<String, Integer>) ois.readObject();
-                @SuppressWarnings("unchecked")
-                Map<Integer, String> loadedIdToRidMap = (Map<Integer, String>) ois.readObject();
-                int loadedNextId = ois.readInt();
-
-                ridToIdMap.putAll(loadedRidToIdMap);
-                idToRidMap.putAll(loadedIdToRidMap);
-                nextId = loadedNextId;
-
-                log.info("Loaded HNSW index from disk - vectors: {}", ridToIdMap.size());
-                return true;
-            }
-
-        } catch (Exception e) {
-            log.warn("Error loading HNSW index from disk", e);
-            return false;
-        }
-    }
-
-    /**
-     * Calculate similarity between query and stored vector
-     * (Simplified - actual implementation would use proper vector similarity)
-     */
-    private float calculateSimilarity(float[] queryVector, int id) {
-        // Placeholder: return random score between 0-100
-        return (float) (Math.random() * 100);
-    }
-
-    /**
-     * Clear index
-     */
-    public void clear() {
-        try {
-            lock.writeLock().lock();
-            ridToIdMap.clear();
-            idToRidMap.clear();
-            nextId = 0;
-            log.info("Cleared HNSW index");
-        } finally {
-            lock.writeLock().unlock();
         }
     }
 
@@ -310,16 +249,146 @@ public class HNSWIndexManager {
     public IndexStatistics getStatistics() {
         try {
             lock.readLock().lock();
-            return IndexStatistics.builder()
-                    .totalVectors(ridToIdMap.size())
-                    .indexSizeBytes(getSizeBytes())
-                    .maxSize(maxSize)
-                    .m(m)
-                    .efConstruction(efConstruction)
-                    .efSearch(efSearch)
-                    .build();
+            return statistics;
         } finally {
             lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Persist index to disk
+     */
+    public void saveToDisk() throws BiometricException {
+        try {
+            lock.readLock().lock();
+
+            if (hnswIndex == null) {
+                throw new BiometricException("HNSW index not initialized");
+            }
+
+            Path path = Paths.get(indexPath);
+            Files.createDirectories(path);
+
+            // Save index
+            String indexFile = path.resolve("hnsw.index").toString();
+            hnswIndex.saveIndex(indexFile);
+
+            // Save mappings
+            String mappingsFile = path.resolve("mappings.dat").toString();
+            try (ObjectOutputStream oos = new ObjectOutputStream(
+                    new FileOutputStream(mappingsFile))) {
+                oos.writeObject(ridToIdMap);
+                oos.writeObject(idToRidMap);
+                oos.writeInt(nextId);
+            }
+
+            log.info("HNSW index saved to disk: {}", indexPath);
+
+        } catch (Exception e) {
+            log.error("Error saving HNSW index to disk", e);
+            throw new BiometricException("Failed to save index: " + e.getMessage(), e);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Load index from disk
+     */
+    private boolean loadFromDisk() throws BiometricException {
+        try {
+            Path path = Paths.get(indexPath);
+            if (!Files.exists(path)) {
+                return false;
+            }
+
+            String indexFile = path.resolve("hnsw.index").toString();
+            String mappingsFile = path.resolve("mappings.dat").toString();
+
+            if (!Files.exists(Paths.get(indexFile)) || !Files.exists(Paths.get(mappingsFile))) {
+                return false;
+            }
+
+            // Load index
+            hnswIndex = new Index<>(indexFile);
+
+            // Load mappings
+            try (ObjectInputStream ois = new ObjectInputStream(
+                    new FileInputStream(mappingsFile))) {
+                ridToIdMap.putAll((Map<String, Integer>) ois.readObject());
+                idToRidMap.putAll((Map<Integer, String>) ois.readObject());
+                nextId = ois.readInt();
+            }
+
+            statistics = new IndexStatistics();
+            statistics.setTotalVectors(ridToIdMap.size());
+            statistics.setIndexSizeBytes(estimateIndexSize());
+
+            log.info("Loaded HNSW index from disk with {} vectors", ridToIdMap.size());
+            return true;
+
+        } catch (Exception e) {
+            log.warn("Could not load HNSW index from disk", e);
+            return false;
+        }
+    }
+
+    /**
+     * Calculate similarity score between embedding and indexed vector
+     */
+    private float calculateSimilarityScore(float[] embedding, int id) {
+        try {
+            // Get indexed vector
+            float[] indexedVector = hnswIndex.getVector(id);
+            if (indexedVector == null) {
+                return 0.0f;
+            }
+
+            // Calculate L2 distance
+            float distance = 0.0f;
+            for (int i = 0; i < embedding.length; i++) {
+                float diff = embedding[i] - indexedVector[i];
+                distance += diff * diff;
+            }
+            distance = (float) Math.sqrt(distance);
+
+            // Convert distance to similarity score (0-100)
+            // Normalize: max distance = sqrt(128) ≈ 11.3
+            float maxDistance = (float) Math.sqrt(VECTOR_DIMENSION);
+            float similarity = Math.max(0, 100 - (distance / maxDistance * 100));
+
+            return similarity;
+
+        } catch (Exception e) {
+            log.warn("Error calculating similarity score", e);
+            return 0.0f;
+        }
+    }
+
+    /**
+     * Estimate index size in bytes
+     */
+    private long estimateIndexSize() {
+        // Rough estimation: each vector takes ~512 bytes (128 floats * 4 bytes)
+        // Plus index overhead
+        return ridToIdMap.size() * 512L + 1024 * 1024;  // +1MB for overhead
+    }
+
+    /**
+     * Shutdown index manager
+     */
+    public void shutdown() {
+        try {
+            lock.writeLock().lock();
+            if (hnswIndex != null) {
+                saveToDisk();
+                hnswIndex = null;
+            }
+            log.info("HNSW index manager shutdown");
+        } catch (Exception e) {
+            log.error("Error during shutdown", e);
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 }

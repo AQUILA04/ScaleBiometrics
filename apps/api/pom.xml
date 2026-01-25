@@ -119,8 +119,11 @@
             <artifactId>sourceafis</artifactId>
         </dependency>
 
-        <!-- Note: HNSW implementation is custom-built in HybridMatchingEngine
-             as jvector artifacts are not available in public Maven repositories -->
+        <!-- HNSW (Hierarchical Navigable Small World) -->
+        <dependency>
+            <groupId>com.github.jelmerk</groupId>
+            <artifactId>hnswlib-core</artifactId>
+        </dependency>
 
         <!-- Observability -->
         <dependency>

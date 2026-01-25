@@ -3,9 +3,7 @@ package com.scalebiometrics.worker.engine;
 import com.scalebiometrics.core.domain.Fingerprint;
 import com.scalebiometrics.core.domain.MatchResult;
 import com.scalebiometrics.core.exception.BiometricException;
-import io.jvector.jvector.pq.ProductQuantizer;
-import io.jvector.jvector.vector.VectorFloat;
-import io.jvector.jvector.vector.types.VectorTypeSupport;
+import com.github.jelmerk.hnswlib.hnswlib;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -99,217 +97,108 @@ public class HybridMatchingEngine {
                         .build();
             }
 
-            // Phase 2: Exact Matching Verification
+            // Phase 2: SourceAFIS Exact Matching (Parallel)
             long exactStartTime = System.currentTimeMillis();
-            List<MatchResult.Candidate> exactCandidates = performExactMatching(
+            List<MatchResult.Candidate> exactMatches = performExactMatching(
                     probeFingerprint, hnswCandidates, traceId);
             long exactDuration = System.currentTimeMillis() - exactStartTime;
-            log.debug("[{}] Exact matching completed in {}ms, verified {} candidates", 
-                    traceId, exactDuration, exactCandidates.size());
+            log.debug("[{}] Exact matching completed in {}ms, {} candidates matched", 
+                    traceId, exactDuration, exactMatches.size());
 
-            // Phase 3: Aggregate and Sort Results
-            List<MatchResult.Candidate> finalCandidates = exactCandidates.stream()
-                    .filter(c -> c.getExactScore() >= EXACT_MATCH_THRESHOLD)
-                    .sorted(Comparator.comparingInt(MatchResult.Candidate::getExactScore).reversed())
+            // Phase 3: Aggregate and Sort
+            List<MatchResult.Candidate> finalResults = exactMatches.stream()
+                    .filter(c -> c.getScore() >= EXACT_MATCH_THRESHOLD)
+                    .sorted(Comparator.comparingInt(MatchResult.Candidate::getScore).reversed())
                     .limit(topK)
                     .collect(Collectors.toList());
 
             long totalTime = System.currentTimeMillis() - startTime;
-            String status = finalCandidates.isEmpty() ? "NO_MATCH" : "MATCH";
+            matchingMetrics.recordMatching1N(totalTime);
+            
+            log.info("[{}] 1:N matching completed in {}ms with {} results", 
+                    traceId, totalTime, finalResults.size());
 
-            MatchResult result = MatchResult.builder()
+            return MatchResult.builder()
                     .probeRid(probeFingerprint.getRid())
-                    .candidates(finalCandidates)
-                    .status(status)
+                    .candidates(finalResults)
+                    .status(finalResults.isEmpty() ? "NO_MATCH" : "MATCH")
                     .matchingTimeMs(totalTime)
                     .traceId(traceId)
+                    .hnswPhaseTimeMs(hnswDuration)
+                    .exactPhaseTimeMs(exactDuration)
                     .build();
-
-            // Record metrics
-            matchingMetrics.recordMatch1N(totalTime, finalCandidates.size(), status);
-            log.info("[{}] 1:N matching completed in {}ms, found {} matches", 
-                    traceId, totalTime, finalCandidates.size());
-
-            return result;
 
         } catch (Exception e) {
             log.error("[{}] Error during 1:N matching", traceId, e);
-            matchingMetrics.recordMatchError("1N_MATCH");
-            throw new BiometricException("Failed to perform 1:N matching: " + e.getMessage(), e);
+            matchingMetrics.recordMatchingError();
+            throw new BiometricException("1:N matching failed: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Perform 1:1 matching (verification).
-     * 
-     * Process:
-     * 1. HNSW Phase: Verify probe is in index and retrieve embedding
-     * 2. Exact Phase: Perform exact matching with target
-     * 3. Return: Single match result
+     * Perform 1:1 verification (authentication).
      * 
      * @param probeFingerprint The probe fingerprint
-     * @param targetFingerprint The target fingerprint
-     * @return MatchResult with single match score
+     * @param targetRid The target record ID to verify against
+     * @return MatchResult with verification score
      */
-    public MatchResult match1To1(Fingerprint probeFingerprint, Fingerprint targetFingerprint) 
-            throws BiometricException {
+    public MatchResult match1To1(Fingerprint probeFingerprint, String targetRid) throws BiometricException {
         long startTime = System.currentTimeMillis();
         String traceId = UUID.randomUUID().toString();
 
         try {
-            log.info("[{}] Starting 1:1 matching - Probe: {}, Target: {}", 
-                    traceId, probeFingerprint.getRid(), targetFingerprint.getRid());
+            log.info("[{}] Starting 1:1 verification for probe RID: {} vs target RID: {}", 
+                    traceId, probeFingerprint.getRid(), targetRid);
 
-            // Exact matching directly (no HNSW needed for 1:1)
-            int exactScore = sourceAFISMatcher.match(
-                    probeFingerprint.getBinaryTemplate(),
-                    targetFingerprint.getBinaryTemplate()
-            );
+            // Retrieve target fingerprint
+            Fingerprint targetFingerprint = hnswIndexManager.getFingerprint(targetRid);
+            if (targetFingerprint == null) {
+                log.warn("[{}] Target fingerprint not found: {}", traceId, targetRid);
+                return MatchResult.builder()
+                        .probeRid(probeFingerprint.getRid())
+                        .candidates(Collections.emptyList())
+                        .status("TARGET_NOT_FOUND")
+                        .matchingTimeMs(System.currentTimeMillis() - startTime)
+                        .traceId(traceId)
+                        .build();
+            }
 
+            // Perform exact matching
+            int score = sourceAFISMatcher.match(probeFingerprint, targetFingerprint);
             long totalTime = System.currentTimeMillis() - startTime;
-            boolean isMatch = exactScore >= EXACT_MATCH_THRESHOLD;
-            String status = isMatch ? "MATCH" : "NO_MATCH";
+            matchingMetrics.recordMatching1To1(totalTime);
 
-            MatchResult.Candidate candidate = MatchResult.Candidate.builder()
-                    .targetRid(targetFingerprint.getRid())
-                    .hnswScore(0)
-                    .exactScore(exactScore)
-                    .finalScore(exactScore)
-                    .isMatch(isMatch)
-                    .build();
+            log.info("[{}] 1:1 verification completed in {}ms with score: {}", 
+                    traceId, totalTime, score);
 
-            MatchResult result = MatchResult.builder()
+            return MatchResult.builder()
                     .probeRid(probeFingerprint.getRid())
-                    .candidates(Collections.singletonList(candidate))
-                    .status(status)
+                    .candidates(Collections.singletonList(
+                            MatchResult.Candidate.builder()
+                                    .targetRid(targetRid)
+                                    .score(score)
+                                    .build()
+                    ))
+                    .status(score >= EXACT_MATCH_THRESHOLD ? "MATCH" : "NO_MATCH")
                     .matchingTimeMs(totalTime)
                     .traceId(traceId)
                     .build();
 
-            matchingMetrics.recordMatch1To1(totalTime, isMatch);
-            log.info("[{}] 1:1 matching completed in {}ms, score: {}, match: {}", 
-                    traceId, totalTime, exactScore, isMatch);
-
-            return result;
-
         } catch (Exception e) {
-            log.error("[{}] Error during 1:1 matching", traceId, e);
-            matchingMetrics.recordMatchError("1TO1_MATCH");
-            throw new BiometricException("Failed to perform 1:1 matching: " + e.getMessage(), e);
+            log.error("[{}] Error during 1:1 verification", traceId, e);
+            matchingMetrics.recordMatchingError();
+            throw new BiometricException("1:1 verification failed: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Phase 1: HNSW Approximate Search
-     * Finds top-K candidates using vector similarity (fast, O(log N))
-     */
-    private List<HNSWCandidate> performHNSWSearch(Fingerprint probeFingerprint, int topK) 
-            throws BiometricException {
-        try {
-            float[] embedding = probeFingerprint.getEmbeddingVector();
-            if (embedding == null || embedding.length == 0) {
-                throw new BiometricException("Probe fingerprint has no embedding vector");
-            }
-
-            // Search HNSW index
-            List<HNSWCandidate> candidates = hnswIndexManager.search(embedding, topK * 2);
-            
-            // Filter by HNSW score threshold
-            return candidates.stream()
-                    .filter(c -> c.getScore() >= HNSW_SCORE_THRESHOLD)
-                    .limit(topK * 2)
-                    .collect(Collectors.toList());
-
-        } catch (Exception e) {
-            log.error("Error performing HNSW search", e);
-            throw new BiometricException("HNSW search failed: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Phase 2: Exact Matching Verification
-     * Verifies HNSW candidates using SourceAFIS (accurate, slower)
-     */
-    private List<MatchResult.Candidate> performExactMatching(
-            Fingerprint probeFingerprint,
-            List<HNSWCandidate> hnswCandidates,
-            String traceId) throws BiometricException {
-        try {
-            byte[] probeBinaryTemplate = probeFingerprint.getBinaryTemplate();
-            if (probeBinaryTemplate == null || probeBinaryTemplate.length == 0) {
-                throw new BiometricException("Probe fingerprint has no binary template");
-            }
-
-            // Parallel exact matching for candidates
-            List<MatchResult.Candidate> exactCandidates = new CopyOnWriteArrayList<>();
-            List<Future<?>> futures = new ArrayList<>();
-
-            for (HNSWCandidate candidate : hnswCandidates) {
-                Future<?> future = executorService.submit(() -> {
-                    try {
-                        byte[] targetBinaryTemplate = offHeapMemoryManager.getTemplate(candidate.getTargetRid());
-                        if (targetBinaryTemplate != null) {
-                            int exactScore = sourceAFISMatcher.match(probeBinaryTemplate, targetBinaryTemplate);
-                            int finalScore = calculateFinalScore(candidate.getScore(), exactScore);
-
-                            MatchResult.Candidate exactCandidate = MatchResult.Candidate.builder()
-                                    .targetRid(candidate.getTargetRid())
-                                    .hnswScore((int) candidate.getScore())
-                                    .exactScore(exactScore)
-                                    .finalScore(finalScore)
-                                    .isMatch(exactScore >= EXACT_MATCH_THRESHOLD)
-                                    .build();
-
-                            exactCandidates.add(exactCandidate);
-                        }
-                    } catch (Exception e) {
-                        log.warn("[{}] Error matching candidate {}: {}", 
-                                traceId, candidate.getTargetRid(), e.getMessage());
-                    }
-                });
-                futures.add(future);
-            }
-
-            // Wait for all exact matching tasks to complete
-            for (Future<?> future : futures) {
-                try {
-                    future.get(5, TimeUnit.SECONDS);
-                } catch (TimeoutException e) {
-                    future.cancel(true);
-                    log.warn("[{}] Exact matching timeout for candidate", traceId);
-                }
-            }
-
-            return exactCandidates;
-
-        } catch (Exception e) {
-            log.error("[{}] Error performing exact matching", traceId, e);
-            throw new BiometricException("Exact matching failed: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Calculate final score combining HNSW and exact scores
-     * Final Score = 0.3 * HNSW_Score + 0.7 * Exact_Score
-     */
-    private int calculateFinalScore(float hnswScore, int exactScore) {
-        return (int) (0.3f * hnswScore + 0.7f * exactScore);
-    }
-
-    /**
-     * Add a fingerprint to the index
+     * Add fingerprint to HNSW index.
      */
     public void addFingerprint(Fingerprint fingerprint) throws BiometricException {
         try {
-            // Add to HNSW index
-            hnswIndexManager.add(fingerprint.getRid(), fingerprint.getEmbeddingVector());
-
-            // Store binary template in off-heap memory
-            offHeapMemoryManager.storeTemplate(fingerprint.getRid(), fingerprint.getBinaryTemplate());
-
-            log.debug("Added fingerprint {} to index", fingerprint.getRid());
-            matchingMetrics.recordIndexAdd();
-
+            hnswIndexManager.addFingerprint(fingerprint);
+            matchingMetrics.recordFingerprintAdded();
+            log.debug("Fingerprint added to index: {}", fingerprint.getRid());
         } catch (Exception e) {
             log.error("Error adding fingerprint to index", e);
             throw new BiometricException("Failed to add fingerprint: " + e.getMessage(), e);
@@ -317,16 +206,13 @@ public class HybridMatchingEngine {
     }
 
     /**
-     * Remove a fingerprint from the index
+     * Remove fingerprint from HNSW index.
      */
     public void removeFingerprint(String rid) throws BiometricException {
         try {
-            hnswIndexManager.remove(rid);
-            offHeapMemoryManager.removeTemplate(rid);
-
-            log.debug("Removed fingerprint {} from index", rid);
-            matchingMetrics.recordIndexRemove();
-
+            hnswIndexManager.removeFingerprint(rid);
+            matchingMetrics.recordFingerprintRemoved();
+            log.debug("Fingerprint removed from index: {}", rid);
         } catch (Exception e) {
             log.error("Error removing fingerprint from index", e);
             throw new BiometricException("Failed to remove fingerprint: " + e.getMessage(), e);
@@ -334,31 +220,113 @@ public class HybridMatchingEngine {
     }
 
     /**
-     * Get index statistics
+     * Phase 1: HNSW Approximate Search
+     * Uses hnswlib-core for fast approximate nearest neighbor search.
      */
-    public IndexStatistics getIndexStatistics() {
-        return IndexStatistics.builder()
-                .totalVectors(hnswIndexManager.getSize())
-                .indexSizeBytes(hnswIndexManager.getSizeBytes())
-                .offHeapMemoryBytes(offHeapMemoryManager.getUsedMemory())
-                .queryCount(matchingMetrics.getTotalQueries())
-                .avgQueryTimeMs(matchingMetrics.getAverageQueryTime())
-                .build();
+    private List<HNSWCandidate> performHNSWSearch(Fingerprint probeFingerprint, int topK) 
+            throws BiometricException {
+        try {
+            // Get embedding vector from fingerprint
+            float[] embedding = probeFingerprint.getEmbedding();
+            if (embedding == null || embedding.length == 0) {
+                log.warn("No embedding found for probe fingerprint: {}", probeFingerprint.getRid());
+                return Collections.emptyList();
+            }
+
+            // Search in HNSW index
+            List<HNSWCandidate> candidates = hnswIndexManager.search(embedding, topK);
+            
+            // Filter by score threshold
+            return candidates.stream()
+                    .filter(c -> c.getScore() >= HNSW_SCORE_THRESHOLD)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Error during HNSW search", e);
+            throw new BiometricException("HNSW search failed: " + e.getMessage(), e);
+        }
     }
 
     /**
-     * Shutdown the engine
+     * Phase 2: SourceAFIS Exact Matching
+     * Performs parallel exact matching on HNSW candidates.
+     */
+    private List<MatchResult.Candidate> performExactMatching(
+            Fingerprint probeFingerprint,
+            List<HNSWCandidate> hnswCandidates,
+            String traceId) throws BiometricException {
+        
+        try {
+            List<Future<MatchResult.Candidate>> futures = new ArrayList<>();
+
+            for (HNSWCandidate candidate : hnswCandidates) {
+                futures.add(executorService.submit(() -> {
+                    try {
+                        Fingerprint targetFingerprint = hnswIndexManager.getFingerprint(candidate.getRid());
+                        if (targetFingerprint == null) {
+                            return null;
+                        }
+
+                        int score = sourceAFISMatcher.match(probeFingerprint, targetFingerprint);
+                        return MatchResult.Candidate.builder()
+                                .targetRid(candidate.getRid())
+                                .score(score)
+                                .build();
+                    } catch (Exception e) {
+                        log.warn("[{}] Error matching candidate: {}", traceId, candidate.getRid(), e);
+                        return null;
+                    }
+                }));
+            }
+
+            // Collect results
+            List<MatchResult.Candidate> results = new ArrayList<>();
+            for (Future<MatchResult.Candidate> future : futures) {
+                try {
+                    MatchResult.Candidate candidate = future.get(5, TimeUnit.SECONDS);
+                    if (candidate != null) {
+                        results.add(candidate);
+                    }
+                } catch (TimeoutException e) {
+                    log.warn("[{}] Timeout waiting for exact matching result", traceId);
+                    future.cancel(true);
+                }
+            }
+
+            return results;
+
+        } catch (Exception e) {
+            log.error("Error during exact matching", e);
+            throw new BiometricException("Exact matching failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get index statistics.
+     */
+    public IndexStatistics getIndexStatistics() {
+        return hnswIndexManager.getStatistics();
+    }
+
+    /**
+     * Get memory statistics.
+     */
+    public MemoryStatistics getMemoryStatistics() {
+        return offHeapMemoryManager.getStatistics();
+    }
+
+    /**
+     * Shutdown the engine.
      */
     public void shutdown() {
         executorService.shutdown();
         try {
-            if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
+            if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
                 executorService.shutdownNow();
             }
         } catch (InterruptedException e) {
             executorService.shutdownNow();
             Thread.currentThread().interrupt();
         }
-        log.info("HybridMatchingEngine shutdown complete");
     }
 }
