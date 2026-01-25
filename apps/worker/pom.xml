@@ -88,6 +88,12 @@
             <artifactId>protobuf-java</artifactId>
         </dependency>
 
+        <!-- javax.annotation-api for @Generated annotation (required for gRPC generated code) -->
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+        </dependency>
+
         <!-- SourceAFIS -->
         <dependency>
             <groupId>com.machinezoo.sourceafis</groupId>
@@ -157,6 +163,7 @@
             <plugin>
                 <groupId>org.xolstice.maven.plugins</groupId>
                 <artifactId>protobuf-maven-plugin</artifactId>
+                <version>0.6.1</version>
                 <configuration>
                     <!-- Use explicit protoc artifact for better compatibility -->
                     <protocArtifact>com.google.protobuf:protoc:3.25.1:exe:${os.detected.classifier}</protocArtifact>
@@ -165,36 +172,31 @@
                     <!-- Source and output directories -->
                     <protoSourceRoot>${project.basedir}/src/main/proto</protoSourceRoot>
                     <outputDirectory>${project.build.directory}/generated-sources/protobuf/java</outputDirectory>
+                    <!-- Do not clear output directory between compile and compile-custom -->
+                    <clearOutputDirectory>false</clearOutputDirectory>
                 </configuration>
                 <executions>
                     <execution>
+                        <id>default-compile</id>
+                        <phase>generate-sources</phase>
                         <goals>
                             <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <clearOutputDirectory>true</clearOutputDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>default-compile-custom</id>
+                        <phase>generate-sources</phase>
+                        <goals>
                             <goal>compile-custom</goal>
                         </goals>
                     </execution>
                 </executions>
             </plugin>
 
-            <!-- Ensure generated sources are included in compilation -->
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <version>3.4.0</version>
-                <executions>
-                    <execution>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>add-source</goal>
-                        </goals>
-                        <configuration>
-                            <sources>
-                                <source>${project.build.directory}/generated-sources/protobuf/java</source>
-                            </sources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+
 
             <!-- JaCoCo for Code Coverage -->
             <plugin>

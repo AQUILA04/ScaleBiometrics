@@ -104,6 +104,13 @@
                 <version>${protobuf.version}</version>
             </dependency>
 
+            <!-- javax.annotation-api for @Generated annotation (required for gRPC generated code) -->
+            <dependency>
+                <groupId>javax.annotation</groupId>
+                <artifactId>javax.annotation-api</artifactId>
+                <version>1.3.2</version>
+            </dependency>
+
             <!-- JVector (Pure Java HNSW with Vector API optimization) -->
             <dependency>
                 <groupId>io.github.jbellis</groupId>

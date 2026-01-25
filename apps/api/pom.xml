@@ -107,6 +107,12 @@
             <artifactId>protobuf-java</artifactId>
         </dependency>
 
+        <!-- javax.annotation-api for @Generated annotation (required for gRPC generated code) -->
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+        </dependency>
+
         <!-- MinIO -->
         <dependency>
             <groupId>io.minio</groupId>
@@ -200,15 +206,32 @@
             <plugin>
                 <groupId>org.xolstice.maven.plugins</groupId>
                 <artifactId>protobuf-maven-plugin</artifactId>
+                <version>0.6.1</version>
                 <configuration>
                     <protocArtifact>com.google.protobuf:protoc:3.25.1:exe:${os.detected.classifier}</protocArtifact>
                     <pluginId>grpc-java</pluginId>
                     <pluginArtifact>io.grpc:protoc-gen-grpc-java:1.60.0:exe:${os.detected.classifier}</pluginArtifact>
+                    <!-- Source and output directories -->
+                    <protoSourceRoot>${project.basedir}/src/main/proto</protoSourceRoot>
+                    <outputDirectory>${project.build.directory}/generated-sources/protobuf/java</outputDirectory>
+                    <!-- Do not clear output directory between compile and compile-custom -->
+                    <clearOutputDirectory>false</clearOutputDirectory>
                 </configuration>
                 <executions>
                     <execution>
+                        <id>default-compile</id>
+                        <phase>generate-sources</phase>
                         <goals>
                             <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <clearOutputDirectory>true</clearOutputDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>default-compile-custom</id>
+                        <phase>generate-sources</phase>
+                        <goals>
                             <goal>compile-custom</goal>
                         </goals>
                     </execution>
