@@ -121,11 +121,6 @@ master:
   worker-discovery:
     enabled: true
     refresh-interval-ms: 30000
-  
-  # Request Routing
-  routing:
-    strategy: ${ROUTING_STRATEGY:HASH}  # HASH, ROUND_ROBIN, LEAST_LOADED
-    replication-factor: ${REPLICATION_FACTOR:1}
 
 # Kafka Topics Configuration
 kafka:

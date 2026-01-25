@@ -45,16 +45,15 @@ class RequestRouterTest {
         workers.add(worker2);
         workers.add(worker3);
 
-        when(worker1.getWorkerId()).thenReturn("worker-1");
-        when(worker2.getWorkerId()).thenReturn("worker-2");
-        when(worker3.getWorkerId()).thenReturn("worker-3");
-
         when(workerPool.getHealthyWorkers()).thenReturn(workers);
     }
 
     @Test
     void testHashRouting() throws BiometricException {
         // Arrange
+        when(worker1.getWorkerId()).thenReturn("worker-1");
+        when(worker2.getWorkerId()).thenReturn("worker-2");
+        when(worker3.getWorkerId()).thenReturn("worker-3");
         requestRouter.setRoutingStrategy(RequestRouter.RoutingStrategy.HASH);
         String rid1 = "RID-123";
         String rid2 = "RID-456";
@@ -111,6 +110,9 @@ class RequestRouterTest {
     void testNoHealthyWorkers() {
         // Arrange
         when(workerPool.getHealthyWorkers()).thenReturn(new ArrayList<>());
+        when(worker1.getWorkerId()).thenReturn("worker-1");
+        when(worker2.getWorkerId()).thenReturn("worker-2");
+        when(worker3.getWorkerId()).thenReturn("worker-3");
 
         // Act & Assert
         assertThrows(BiometricException.class, () -> {
@@ -121,6 +123,9 @@ class RequestRouterTest {
     @Test
     void testGetReplicasForKey() throws BiometricException {
         // Arrange
+        when(worker1.getWorkerId()).thenReturn("worker-1");
+        when(worker2.getWorkerId()).thenReturn("worker-2");
+        when(worker3.getWorkerId()).thenReturn("worker-3");
         requestRouter.setReplicationFactor(2);
 
         // Act
