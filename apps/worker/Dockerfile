@@ -8,12 +8,9 @@ WORKDIR /build
 # Copy the entire project structure from the root context
 COPY . .
 
-# Install parent POM and download dependencies
-RUN mvn install -DskipTests -B -pl . && \
-    mvn dependency:go-offline -B -pl apps/worker -am
-
-# Build the Worker module
-RUN mvn clean package -DskipTests -B -pl apps/worker -am
+# Build from root to resolve parent POM
+RUN mvn clean install -DskipTests -B -pl . && \
+    mvn clean package -DskipTests -B -pl apps/worker -am
 
 # Stage 2: Runtime
 FROM eclipse-temurin:21-jre-alpine
