@@ -73,44 +73,60 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      # Step 1: Build and install biometric-core to local Maven repository
-      - name: Build biometric-core package
+      # Step 1: Install parent POM to local Maven repository
+      # This is required for all child modules to resolve their parent
+      - name: Install parent POM
+        run: |
+          echo "Installing parent POM (scalebiometrics-parent) to local Maven repository..."
+          mvn install -B -DskipTests -N
+          echo "✓ Parent POM installed successfully"
+
+      # Step 2: Build and install biometric-core to local Maven repository
+      # This is a shared library that other modules depend on
+      - name: Build and install biometric-core
         working-directory: packages/biometric-core
         run: |
-          echo "Building biometric-core package..."
+          echo "Building and installing biometric-core package..."
           mvn clean install -B -DskipTests
-          echo "biometric-core installed to local Maven repository"
+          echo "✓ biometric-core installed to local Maven repository"
 
-      # Step 2: Build and install worker module
-      - name: Build worker module
+      # Step 3: Build and install worker module
+      # Depends on: parent POM, biometric-core
+      - name: Build and install worker module
         working-directory: apps/worker
         run: |
-          echo "Building worker module..."
+          echo "Building and installing worker module..."
           mvn clean install -B -DskipTests
-          echo "worker module installed"
+          echo "✓ worker module installed"
 
-      # Step 3: Build and install master module
-      - name: Build master module
+      # Step 4: Build and install master module
+      # Depends on: parent POM, biometric-core
+      - name: Build and install master module
         working-directory: apps/master
         run: |
-          echo "Building master module..."
+          echo "Building and installing master module..."
           mvn clean install -B -DskipTests
-          echo "master module installed"
+          echo "✓ master module installed"
 
-      # Step 4: Build API module (depends on biometric-core, worker, master)
-      - name: Build API with Maven
+      # Step 5: Build API module
+      # Depends on: parent POM, biometric-core, worker, master
+      - name: Build API module with all dependencies
         working-directory: apps/api
         run: |
           echo "Building API module with all dependencies available..."
           mvn clean compile -B
+          echo "✓ API module compiled successfully"
 
-      # Step 5: Run unit tests for all modules
-      - name: Run unit tests
+      # Step 6: Run unit tests for all modules
+      # Tests all modules in the monorepo
+      - name: Run unit tests for all modules
         run: |
           echo "Running unit tests for all modules..."
-          mvn test -B
+          mvn test -B --fail-at-end
+          echo "✓ Unit tests completed"
 
-      # Step 6: Run integration tests
+      # Step 7: Run integration tests
+      # Integration tests with PostgreSQL and Redis services
       - name: Run integration tests
         env:
           SPRING_PROFILES_ACTIVE: test
@@ -123,15 +139,17 @@ jobs:
           REDIS_PORT: 6379
         run: |
           echo "Running integration tests..."
-          mvn verify -B
+          mvn verify -B --fail-at-end
+          echo "✓ Integration tests completed"
 
-      # Step 7: Generate coverage report
-      - name: Generate coverage report
+      # Step 8: Generate JaCoCo coverage reports for all modules
+      - name: Generate JaCoCo coverage reports
         run: |
           echo "Generating JaCoCo coverage reports..."
-          mvn jacoco:report -B
+          mvn jacoco:report -B --fail-at-end
+          echo "✓ Coverage reports generated"
 
-      # Step 8: Upload coverage to Codecov
+      # Step 9: Upload coverage to Codecov
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
@@ -142,9 +160,10 @@ jobs:
             apps/master/target/site/jacoco/jacoco.xml
           flags: backend
           name: backend-coverage
+          fail_ci_if_error: false
         continue-on-error: true
 
-      # Step 9: Archive test results
+      # Step 10: Archive test results from all modules
       - name: Archive test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -155,9 +174,10 @@ jobs:
             apps/api/target/surefire-reports/
             apps/worker/target/surefire-reports/
             apps/master/target/surefire-reports/
+          retention-days: 30
         continue-on-error: true
 
-      # Step 10: Archive build artifacts
+      # Step 11: Archive build artifacts (JAR files)
       - name: Archive build artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -168,12 +188,37 @@ jobs:
             apps/api/target/*.jar
             apps/worker/target/*.jar
             apps/master/target/*.jar
+          retention-days: 30
         continue-on-error: true
+
+      # Step 12: Display build summary
+      - name: Display build summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "Build Summary"
+          echo "=========================================="
+          echo ""
+          echo "Modules built:"
+          echo "  ✓ scalebiometrics-parent (parent POM)"
+          echo "  ✓ biometric-core"
+          echo "  ✓ worker"
+          echo "  ✓ master"
+          echo "  ✓ api"
+          echo ""
+          echo "Artifacts available in:"
+          echo "  - packages/biometric-core/target/"
+          echo "  - apps/worker/target/"
+          echo "  - apps/master/target/"
+          echo "  - apps/api/target/"
+          echo ""
+          echo "=========================================="
 
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: build-and-test
+    if: always()
     
     steps:
       - name: Checkout code
@@ -214,6 +259,7 @@ jobs:
         run: |
           if [ "${{ needs.build-and-test.result }}" == "success" ]; then
             echo "✅ Backend build and tests: SUCCESS"
+            exit 0
           else
             echo "❌ Backend build and tests: FAILED"
             exit 1
