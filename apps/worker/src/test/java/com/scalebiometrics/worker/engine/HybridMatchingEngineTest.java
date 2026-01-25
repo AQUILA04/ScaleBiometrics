@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
 
 /**
  * HybridMatchingEngine Unit Tests
@@ -77,7 +78,7 @@ class HybridMatchingEngineTest {
         Fingerprint targetFingerprint = createTestFingerprint("target-1");
 
         // Mock SourceAFIS matching
-        when(sourceAFISMatcher.match(any(byte[].class), any(byte[].class)))
+        lenient().when(sourceAFISMatcher.match(any(byte[].class), any(byte[].class)))
                 .thenReturn(90);  // 90% match score
 
         // Act
