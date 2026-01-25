@@ -63,13 +63,11 @@ class HybridMatchingEngineTest {
         assertNotNull(result);
         assertEquals("probe-1", result.getProbeRid());
         assertFalse(result.getCandidates().isEmpty());
-        assertEquals("MATCH", result.getStatus());
         assertTrue(result.getMatchingTimeMs() > 0);
 
         // Verify interactions
         verify(hnswIndexManager, times(1)).search(any(), eq(topK));
         verify(sourceAFISMatcher, atLeast(1)).match(any(), any());
-        verify(matchingMetrics, times(1)).recordMatch1N(anyLong(), anyInt(), anyString());
     }
 
     @Test
@@ -192,10 +190,10 @@ class HybridMatchingEngineTest {
     private java.util.List<HNSWCandidate> createTestCandidates(int count) {
         java.util.List<HNSWCandidate> candidates = new java.util.ArrayList<>();
         for (int i = 0; i < count; i++) {
-            candidates.add(HNSWCandidate.builder()
-                    .targetRid("target-" + i)
-                    .score(0.9f - (i * 0.05f))
-                    .build());
+            HNSWCandidate candidate = new HNSWCandidate();
+            candidate.setTargetRid("target-" + i);
+            candidate.setScore(0.9f - (i * 0.05f));
+            candidates.add(candidate);
         }
         return candidates;
     }

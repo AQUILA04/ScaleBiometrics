@@ -39,7 +39,6 @@ class RequestRouterTest {
     @BeforeEach
     void setUp() {
         requestRouter = new RequestRouter(workerPool);
-        requestRouter.initialize();
 
         workers = new ArrayList<>();
         workers.add(worker1);
@@ -99,16 +98,6 @@ class RequestRouterTest {
     void testLeastLoadedRouting() throws BiometricException {
         // Arrange
         requestRouter.setRoutingStrategy(RequestRouter.RoutingStrategy.LEAST_LOADED);
-
-        // Mock worker status
-        var metrics1 = new com.scalebiometrics.master.routing.LoadBalancingService.WorkerLoadMetrics("worker-1");
-        metrics1.incrementRequestCount();
-        metrics1.incrementRequestCount();
-
-        var metrics2 = new com.scalebiometrics.master.routing.LoadBalancingService.WorkerLoadMetrics("worker-2");
-        metrics2.incrementRequestCount();
-
-        var metrics3 = new com.scalebiometrics.master.routing.LoadBalancingService.WorkerLoadMetrics("worker-3");
 
         // Act
         WorkerClient result = requestRouter.routeRequest("RID-123");

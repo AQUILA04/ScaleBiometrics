@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Master Orchestrator Integration Tests
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class MasterOrchestratorIntegrationTest {
 

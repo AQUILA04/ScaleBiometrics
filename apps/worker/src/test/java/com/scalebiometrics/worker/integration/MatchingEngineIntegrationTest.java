@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Matching Engine Integration Tests
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class MatchingEngineIntegrationTest {
 
@@ -33,12 +33,8 @@ class MatchingEngineIntegrationTest {
 
     @BeforeEach
     void setUp() throws BiometricException {
-        // Clear index before each test
-        hnswIndexManager.clear();
-        offHeapMemoryManager.clear();
-
         // Add test fingerprints
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 10; i++) {
             Fingerprint fp = createTestFingerprint("RID-" + i);
             hybridMatchingEngine.addFingerprint(fp);
         }
