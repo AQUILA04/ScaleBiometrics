@@ -33,7 +33,7 @@ message MatchRequest {
   string tenant_id = 2;
   string probe_rid = 3;
   bytes probe_template = 4; // SourceAFIS binary template
-  float[] probe_embedding = 5; // HNSW embedding vector
+  repeated float probe_embedding = 5; // HNSW embedding vector (128D)
   int32 top_k = 6; // Number of candidates to return (default: 10)
   int32 threshold = 7; // Minimum matching score (default: 40)
   int64 timeout_ms = 8; // Request timeout in milliseconds
