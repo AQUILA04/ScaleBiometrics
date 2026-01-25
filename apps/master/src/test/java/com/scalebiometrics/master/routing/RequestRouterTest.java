@@ -46,7 +46,7 @@ class RequestRouterTest {
         workers.add(worker2);
         workers.add(worker3);
 
-        when(workerPool.getHealthyWorkers()).thenReturn(workers);
+        lenient().when(workerPool.getHealthyWorkers()).thenReturn(workers);
     }
 
     @Test
