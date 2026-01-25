@@ -9,8 +9,8 @@ WORKDIR /build
 COPY . .
 
 # Build from root to resolve parent POM
-RUN mvn clean install -DskipTests -B -pl . && \
-    mvn clean package -DskipTests -B -pl apps/master -am
+# First, build the parent and all dependencies
+RUN mvn clean package -DskipTests -B -pl apps/master -am
 
 # Stage 2: Runtime
 FROM eclipse-temurin:21-jre-alpine
