@@ -2,8 +2,11 @@ package com.scalebiometrics.worker.engine;
 
 import com.scalebiometrics.core.domain.Fingerprint;
 import com.scalebiometrics.core.exception.BiometricException;
-import com.github.jelmerk.hnswlib.hnswlib;
-import com.github.jelmerk.hnswlib.Index;
+import io.github.jbellis.jvector.graph.GraphIndex;
+import io.github.jbellis.jvector.graph.RandomAccessVectorValues;
+import io.github.jbellis.jvector.quantization.ScalarQuantizer;
+import io.github.jbellis.jvector.vector.VectorFloat;
+import io.github.jbellis.jvector.vector.VectorSimilarityFunction;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -18,7 +21,13 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * HNSW Index Manager - Manages Hierarchical Navigable Small World index using hnswlib-core.
+ * HNSW Index Manager - Manages Hierarchical Navigable Small World index using JVector 3.0.6.
+ * 
+ * JVector Features:
+ * - Pure Java implementation with Vector API optimization for Java 21
+ * - SIMD acceleration via Vector API
+ * - Efficient off-heap memory support
+ * - Used in production by Apache Cassandra
  * 
  * Responsibilities:
  * - Create and maintain HNSW index for approximate nearest neighbor search
@@ -50,7 +59,8 @@ public class HNSWIndexManager {
     @Value("${worker.data.index-path:/tmp/hnsw-index}")
     private String indexPath;
 
-    private Index<Integer, float[], HNSWCandidate> hnswIndex;
+    private GraphIndex<float[]> hnswIndex;
+    private RandomAccessVectorValues vectorValues;
     private final Map<String, Integer> ridToIdMap = new ConcurrentHashMap<>();
     private final Map<Integer, String> idToRidMap = new ConcurrentHashMap<>();
     private final Map<Integer, Fingerprint> fingerprintCache = new ConcurrentHashMap<>();
@@ -59,13 +69,13 @@ public class HNSWIndexManager {
     private IndexStatistics statistics;
 
     /**
-     * Initialize HNSW index
+     * Initialize HNSW index using JVector
      */
     public void initialize() throws BiometricException {
         try {
             lock.writeLock().lock();
             
-            log.info("Initializing HNSW index with M={}, efConstruction={}, efSearch={}", 
+            log.info("Initializing JVector HNSW index with M={}, efConstruction={}, efSearch={}", 
                     m, efConstruction, efSearch);
 
             // Try to load from disk
@@ -74,18 +84,23 @@ public class HNSWIndexManager {
                 return;
             }
 
-            // Create new index using hnswlib-core
-            hnswIndex = new Index<>(
-                    hnswlib.L2,           // Distance metric: L2 (Euclidean)
-                    true,                 // Allow index updates
-                    m,                    // M parameter
-                    efConstruction,       // ef_construction
-                    maxSize,              // Max elements
-                    0                     // Random seed
+            // Create new index using JVector
+            // JVector uses VectorSimilarityFunction.EUCLIDEAN for L2 distance
+            vectorValues = new RandomAccessVectorValues.FloatMultiVector(
+                    new float[maxSize][VECTOR_DIMENSION]);
+            
+            hnswIndex = new GraphIndex<>(
+                    GraphIndex.EMPTY_GRAPH,
+                    vectorValues,
+                    VectorSimilarityFunction.EUCLIDEAN,
+                    m,
+                    efConstruction,
+                    efSearch,
+                    1.2f  // growthFactor
             );
 
             statistics = new IndexStatistics();
-            log.info("Created new HNSW index with max size: {}", maxSize);
+            log.info("Created new JVector HNSW index with max size: {}", maxSize);
 
         } catch (Exception e) {
             log.error("Error initializing HNSW index", e);
@@ -120,8 +135,8 @@ public class HNSWIndexManager {
                         VECTOR_DIMENSION + ", got " + (embedding == null ? 0 : embedding.length));
             }
 
-            // Add to HNSW index
-            hnswIndex.add(id, embedding);
+            // Add to HNSW index using JVector
+            hnswIndex.addGraphNode(id, VectorFloat.create(embedding));
 
             // Update mappings
             ridToIdMap.put(rid, id);
@@ -159,10 +174,8 @@ public class HNSWIndexManager {
                 return;
             }
 
-            // Remove from HNSW index
-            hnswIndex.remove(id);
-
-            // Update mappings
+            // Note: JVector doesn't support removal directly from graph
+            // Mark as deleted in our mapping
             ridToIdMap.remove(rid);
             idToRidMap.remove(id);
             fingerprintCache.remove(id);
@@ -182,7 +195,7 @@ public class HNSWIndexManager {
     }
 
     /**
-     * Search for nearest neighbors
+     * Search for nearest neighbors using JVector
      */
     public List<HNSWCandidate> search(float[] embedding, int topK) throws BiometricException {
         try {
@@ -196,12 +209,14 @@ public class HNSWIndexManager {
                 throw new BiometricException("Invalid embedding dimension");
             }
 
-            // Search in HNSW index
-            List<Integer> results = hnswIndex.knnQuery(embedding, topK);
+            // Search in HNSW index using JVector
+            VectorFloat queryVector = VectorFloat.create(embedding);
+            var results = hnswIndex.search(queryVector, topK, efSearch);
 
             // Convert results to candidates
             List<HNSWCandidate> candidates = new ArrayList<>();
-            for (Integer id : results) {
+            for (var result : results) {
+                int id = result.node;
                 String rid = idToRidMap.get(id);
                 if (rid != null) {
                     // Calculate similarity score (0-100)
@@ -269,9 +284,9 @@ public class HNSWIndexManager {
             Path path = Paths.get(indexPath);
             Files.createDirectories(path);
 
-            // Save index
+            // Save index using JVector serialization
             String indexFile = path.resolve("hnsw.index").toString();
-            hnswIndex.saveIndex(indexFile);
+            hnswIndex.save(indexFile);
 
             // Save mappings
             String mappingsFile = path.resolve("mappings.dat").toString();
@@ -309,8 +324,8 @@ public class HNSWIndexManager {
                 return false;
             }
 
-            // Load index
-            hnswIndex = new Index<>(indexFile);
+            // Load index using JVector deserialization
+            hnswIndex = GraphIndex.load(indexFile);
 
             // Load mappings
             try (ObjectInputStream ois = new ObjectInputStream(
@@ -335,11 +350,12 @@ public class HNSWIndexManager {
 
     /**
      * Calculate similarity score between embedding and indexed vector
+     * Uses L2 distance converted to similarity score (0-100)
      */
     private float calculateSimilarityScore(float[] embedding, int id) {
         try {
-            // Get indexed vector
-            float[] indexedVector = hnswIndex.getVector(id);
+            // Get indexed vector from JVector
+            float[] indexedVector = vectorValues.get(id).toArray();
             if (indexedVector == null) {
                 return 0.0f;
             }
@@ -370,8 +386,8 @@ public class HNSWIndexManager {
      */
     private long estimateIndexSize() {
         // Rough estimation: each vector takes ~512 bytes (128 floats * 4 bytes)
-        // Plus index overhead
-        return ridToIdMap.size() * 512L + 1024 * 1024;  // +1MB for overhead
+        // Plus index overhead and graph structure
+        return ridToIdMap.size() * 512L + 10 * 1024 * 1024;  // +10MB for overhead
     }
 
     /**

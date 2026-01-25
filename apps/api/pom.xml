@@ -119,10 +119,10 @@
             <artifactId>sourceafis</artifactId>
         </dependency>
 
-        <!-- HNSW (Hierarchical Navigable Small World) -->
+        <!-- JVector (Pure Java HNSW with Vector API optimization) -->
         <dependency>
-            <groupId>com.github.jelmerk</groupId>
-            <artifactId>hnswlib-core</artifactId>
+            <groupId>io.github.jbellis</groupId>
+            <artifactId>jvector</artifactId>
         </dependency>
 
         <!-- Observability -->
