@@ -95,6 +95,28 @@ master:
     max-recovery-attempts: 3
     initial-recovery-delay-ms: 5000
   
+  # Request Routing Configuration
+  routing:
+    strategy: ${ROUTING_STRATEGY:HASH}  # HASH, ROUND_ROBIN, LEAST_LOADED
+    replication-factor: ${REPLICATION_FACTOR:1}
+  
+  # Load Balancing Configuration
+  load-balancing:
+    enabled: true
+    overload-threshold: 1000
+    slow-response-threshold-ms: 500
+  
+  # Request Deduplication Configuration
+  deduplication:
+    enabled: true
+    ttl-seconds: 300
+  
+  # Cache Configuration
+  cache:
+    enabled: true
+    ttl-seconds: 3600
+    max-size: 10000
+  
   # Worker Discovery
   worker-discovery:
     enabled: true
