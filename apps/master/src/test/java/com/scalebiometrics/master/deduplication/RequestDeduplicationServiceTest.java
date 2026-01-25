@@ -198,7 +198,7 @@ class RequestDeduplicationServiceTest {
     private MatchResult createTestMatchResult() {
         MatchResult result = new MatchResult();
         result.setProbeRid("RID-123");
-        result.setStatus("MATCH");
+        result.setStatus(MatchResult.MatchStatus.MATCH_FOUND);
         result.setMatchingTimeMs(150);
         return result;
     }

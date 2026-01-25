@@ -2,12 +2,14 @@ package com.scalebiometrics.master.ha;
 
 import com.scalebiometrics.master.grpc.WorkerPool;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Health Monitoring Service - Monitors health of all components.
@@ -174,9 +176,9 @@ public class HealthMonitoringService {
             }
         }
 
-        meterRegistry.gauge("workers.healthy", healthyWorkers);
-        meterRegistry.gauge("workers.unhealthy", unhealthyWorkers);
-        meterRegistry.gauge("workers.total", workerHealthStatus.size());
+        // meterRegistry.gauge("workers.healthy", Tags.empty(), workerHealthStatus, status -> status.values().stream().filter(WorkerHealthStatus::isHealthy).count());
+        // meterRegistry.gauge("workers.unhealthy", Tags.empty(), workerHealthStatus, status -> status.values().stream().filter(s -> !s.isHealthy()).count());
+        // meterRegistry.gauge("workers.total", Tags.empty(), workerHealthStatus, Map::size);
     }
 
     /**

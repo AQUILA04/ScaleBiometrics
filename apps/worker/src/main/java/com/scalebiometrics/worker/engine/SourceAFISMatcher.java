@@ -1,5 +1,6 @@
 package com.scalebiometrics.worker.engine;
 
+import com.scalebiometrics.core.domain.Fingerprint;
 import com.scalebiometrics.core.exception.BiometricException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -33,15 +34,15 @@ public class SourceAFISMatcher {
      */
     public int match(byte[] probeTemplate, byte[] targetTemplate) throws BiometricException {
         if (probeTemplate == null || targetTemplate == null) {
-            throw new BiometricException("Template cannot be null");
+            throw new BiometricException("Template cannot be null", "NULL_TEMPLATE");
         }
 
         if (probeTemplate.length < MIN_TEMPLATE_SIZE || probeTemplate.length > MAX_TEMPLATE_SIZE) {
-            throw new BiometricException("Invalid probe template size: " + probeTemplate.length);
+            throw new BiometricException("Invalid probe template size: " + probeTemplate.length, "INVALID_PROBE_TEMPLATE");
         }
 
         if (targetTemplate.length < MIN_TEMPLATE_SIZE || targetTemplate.length > MAX_TEMPLATE_SIZE) {
-            throw new BiometricException("Invalid target template size: " + targetTemplate.length);
+            throw new BiometricException("Invalid target template size: " + targetTemplate.length, "INVALID_TARGET_TEMPLATE");
         }
 
         try {
@@ -54,7 +55,7 @@ public class SourceAFISMatcher {
 
         } catch (Exception e) {
             log.error("Error performing SourceAFIS matching", e);
-            throw new BiometricException("SourceAFIS matching failed: " + e.getMessage(), e);
+            throw new BiometricException("SourceAFIS matching failed: " + e.getMessage(), "MATCHING_ERROR", e);
         }
     }
 
@@ -107,6 +108,20 @@ public class SourceAFISMatcher {
         // If more than 80% of bytes are the same, template is likely invalid
         int sameCount = Math.max(zeroCount, oneCount);
         return sameCount < (template.length * 0.8);
+    }
+
+    /**
+     * Perform exact matching between two Fingerprint objects (overload)
+     * 
+     * @param probeFingerprint Probe fingerprint object
+     * @param targetFingerprint Target fingerprint object
+     * @return Similarity score (0-100)
+     */
+    public int match(Fingerprint probeFingerprint, Fingerprint targetFingerprint) throws BiometricException {
+        if (probeFingerprint == null || targetFingerprint == null) {
+            throw new BiometricException("Fingerprint cannot be null", "NULL_FINGERPRINT");
+        }
+        return match(probeFingerprint.getTemplate(), targetFingerprint.getTemplate());
     }
 
     /**

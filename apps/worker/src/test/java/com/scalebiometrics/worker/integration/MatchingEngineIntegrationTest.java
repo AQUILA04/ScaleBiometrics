@@ -107,8 +107,8 @@ class MatchingEngineIntegrationTest {
 
         // Assert
         assertNotNull(stats);
-        assertTrue(stats.getUsedMemoryBytes() >= 0);
-        assertTrue(stats.getMaxMemoryBytes() > 0);
+        assertTrue(stats.getTotalAllocatedBytes() >= 0);
+        assertTrue(stats.getMaxAllocatedBytes() > 0);
         assertTrue(stats.getUsagePercentage() >= 0);
     }
 
@@ -166,11 +166,11 @@ class MatchingEngineIntegrationTest {
     private Fingerprint createTestFingerprint(String rid) {
         Fingerprint fingerprint = new Fingerprint();
         fingerprint.setRid(rid);
-        fingerprint.setFingerIndex(0);
+        fingerprint.setFingerIndex(Fingerprint.FingerIndex.RIGHT_INDEX);
         fingerprint.setBinaryTemplate(new byte[256]);
         fingerprint.setEmbeddingVector(createRandomVector(512));
         fingerprint.setQuality(95);
-        fingerprint.setStatus("VALID");
+        fingerprint.setStatus(Fingerprint.FingerprintStatus.ACTIVE);
         return fingerprint;
     }
 

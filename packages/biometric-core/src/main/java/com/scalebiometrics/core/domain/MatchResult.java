@@ -26,6 +26,8 @@ public class MatchResult {
     private long matchingTimeMs;
     private String traceId;
     private LocalDateTime createdAt;
+    private long hnswPhaseTimeMs;
+    private long exactPhaseTimeMs;
 
     @Data
     @NoArgsConstructor
@@ -36,6 +38,7 @@ public class MatchResult {
         private int hnnScore; // ANN pre-filtering score (0-100)
         private int exactScore; // SourceAFIS exact match score (0-100)
         private int finalScore; // Combined score
+        private int score; // Overall score (used for 1:1 verification)
         private boolean isMatch;
     }
 
@@ -44,5 +47,17 @@ public class MatchResult {
         NO_MATCH,
         AMBIGUOUS,
         ERROR
+    }
+
+    // Helper methods for backward compatibility
+    public boolean isMatch() {
+        return status == MatchStatus.MATCH_FOUND;
+    }
+
+    public int getScore() {
+        if (candidates != null && !candidates.isEmpty()) {
+            return candidates.get(0).getScore();
+        }
+        return 0;
     }
 }

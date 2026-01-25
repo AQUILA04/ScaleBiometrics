@@ -103,7 +103,7 @@ public class CacheService {
 
         try {
             // Check cache size
-            Long size = redisTemplate.keys(CACHE_KEY_PREFIX + "*").size();
+            Long size = (long) redisTemplate.keys(CACHE_KEY_PREFIX + "*").size();
             if (size >= maxCacheSize) {
                 log.warn("Cache size limit reached: {}/{}", size, maxCacheSize);
                 cacheEvictions.incrementAndGet();

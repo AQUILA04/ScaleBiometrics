@@ -100,7 +100,7 @@ public class WorkerConfiguration {
      * Initialize gRPC Matcher Service
      */
     @Bean
-    public MatcherServiceImpl matcherService(HybridMatchingEngine matchingEngine) {
-        return new MatcherServiceImpl(matchingEngine);
+    public MatcherServiceImpl matcherService(HybridMatchingEngine matchingEngine, MatchingMetrics matchingMetrics) {
+        return new MatcherServiceImpl(matchingEngine, matchingMetrics);
     }
 }

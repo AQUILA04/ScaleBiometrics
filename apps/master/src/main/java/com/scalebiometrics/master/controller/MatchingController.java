@@ -40,7 +40,7 @@ public class MatchingController {
             Fingerprint probeFingerprint = request.getProbeFingerprint();
             int topK = request.getTopK() > 0 ? request.getTopK() : 10;
 
-            MatchResult result = orchestrator.match1NDistributed(probeFingerprint, topK);
+            MatchResult result = orchestrator.match1N(probeFingerprint, topK);
 
             return ResponseEntity.ok(result);
 
@@ -73,7 +73,7 @@ public class MatchingController {
             // For 1:1, we can route to a specific worker based on target RID
             // For now, just use scatter-gather with topK=1
             Fingerprint probeFingerprint = request.getProbeFingerprint();
-            MatchResult result = orchestrator.match1NDistributed(probeFingerprint, 1);
+            MatchResult result = orchestrator.match1N(probeFingerprint, 1);
 
             return ResponseEntity.ok(result);
 

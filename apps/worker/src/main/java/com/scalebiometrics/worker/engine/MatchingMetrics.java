@@ -18,6 +18,9 @@ public class MatchingMetrics {
     private final MeterRegistry meterRegistry;
     private final AtomicLong totalQueries = new AtomicLong(0);
     private final AtomicLong totalTime = new AtomicLong(0);
+    private final AtomicLong totalMatches = new AtomicLong(0);
+    private final AtomicLong totalErrors = new AtomicLong(0);
+    private final long startTime = System.currentTimeMillis();
 
     private Counter match1NCounter;
     private Counter match1To1Counter;
@@ -58,37 +61,65 @@ public class MatchingMetrics {
                 .register(meterRegistry);
     }
 
-    public void recordMatch1N(long durationMs, int candidatesFound, String status) {
+    public void recordMatching1N(long durationMs) {
         match1NCounter.increment();
         matchingLatencyTimer.record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
         totalQueries.incrementAndGet();
         totalTime.addAndGet(durationMs);
-
-        meterRegistry.gauge("matching.1n.candidates", () -> candidatesFound);
+        totalMatches.incrementAndGet();
     }
 
-    public void recordMatch1To1(long durationMs, boolean isMatch) {
+    public void recordMatching1To1(long durationMs) {
         match1To1Counter.increment();
         matchingLatencyTimer.record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
         totalQueries.incrementAndGet();
         totalTime.addAndGet(durationMs);
-
-        if (isMatch) {
-            meterRegistry.counter("matching.1to1.matches").increment();
-        }
+        totalMatches.incrementAndGet();
     }
 
-    public void recordMatchError(String errorType) {
+    public void recordMatchingError() {
         matchErrorCounter.increment();
-        meterRegistry.counter("matching.errors", "type", errorType).increment();
+        totalErrors.incrementAndGet();
     }
 
-    public void recordIndexAdd() {
+    public void recordFingerprintAdded() {
         indexAddCounter.increment();
     }
 
-    public void recordIndexRemove() {
+    public void recordFingerprintRemoved() {
         indexRemoveCounter.increment();
+    }
+
+    public long getTotalMatches() {
+        return totalMatches.get();
+    }
+
+    public long getTotalErrors() {
+        return totalErrors.get();
+    }
+
+    public double getAverageLatency() {
+        long queries = totalQueries.get();
+        if (queries == 0) {
+            return 0;
+        }
+        return (double) totalTime.get() / queries;
+    }
+
+    public double getP95Latency() {
+        // This would be obtained from the Timer metrics
+        // For now, return average as placeholder
+        return getAverageLatency();
+    }
+
+    public double getP99Latency() {
+        // This would be obtained from the Timer metrics
+        // For now, return average as placeholder
+        return getAverageLatency();
+    }
+
+    public long getUptime() {
+        return System.currentTimeMillis() - startTime;
     }
 
     public long getTotalQueries() {

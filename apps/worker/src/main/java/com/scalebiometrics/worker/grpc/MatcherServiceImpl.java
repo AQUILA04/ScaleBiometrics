@@ -4,6 +4,7 @@ import com.scalebiometrics.core.domain.Fingerprint;
 import com.scalebiometrics.core.domain.MatchResult;
 import com.scalebiometrics.proto.matcher.*;
 import com.scalebiometrics.worker.engine.HybridMatchingEngine;
+import com.scalebiometrics.worker.engine.MatchingMetrics;
 import io.grpc.stub.StreamObserver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,9 +23,11 @@ import java.util.List;
 public class MatcherServiceImpl extends MatcherServiceGrpc.MatcherServiceImplBase {
 
     private final HybridMatchingEngine matchingEngine;
+    private final MatchingMetrics matchingMetrics;
 
-    public MatcherServiceImpl(HybridMatchingEngine matchingEngine) {
+    public MatcherServiceImpl(HybridMatchingEngine matchingEngine, MatchingMetrics matchingMetrics) {
         this.matchingEngine = matchingEngine;
+        this.matchingMetrics = matchingMetrics;
     }
 
     /**
@@ -145,18 +148,18 @@ public class MatcherServiceImpl extends MatcherServiceGrpc.MatcherServiceImplBas
             log.debug("Status request from worker: {}", request.getWorkerId());
 
             WorkerMetrics metrics = WorkerMetrics.newBuilder()
-                    .setTotalMatches(matchingEngine.getTotalMatches())
-                    .setTotalErrors(matchingEngine.getTotalErrors())
-                    .setAvgLatencyMs(matchingEngine.getAverageLatency())
-                    .setP95LatencyMs(matchingEngine.getP95Latency())
-                    .setP99LatencyMs(matchingEngine.getP99Latency())
+                    .setTotalMatches(matchingMetrics.getTotalMatches())
+                    .setTotalErrors(matchingMetrics.getTotalErrors())
+                    .setAvgLatencyMs((long) matchingMetrics.getAverageLatency())
+                    .setP95LatencyMs((long) matchingMetrics.getP95Latency())
+                    .setP99LatencyMs((long) matchingMetrics.getP99Latency())
                     .build();
 
             StatusResponse response = StatusResponse.newBuilder()
                     .setWorkerId(request.getWorkerId())
                     .setStatus("HEALTHY")
                     .setMetrics(metrics)
-                    .setUptimeMs(matchingEngine.getUptime())
+                    .setUptimeMs(matchingMetrics.getUptime())
                     .build();
 
             responseObserver.onNext(response);
@@ -186,11 +189,11 @@ public class MatcherServiceImpl extends MatcherServiceGrpc.MatcherServiceImplBas
      * Convert domain MatchResult to gRPC Match1NResponse
      */
     private MatchResponse convertToMatch1NResponse(MatchResult matchResult, String traceId) {
-        List<MatchResponse.Candidate> candidates = new ArrayList<>();
+        List<Candidate> candidates = new ArrayList<>();
         
         if (matchResult.getCandidates() != null) {
             for (MatchResult.Candidate candidate : matchResult.getCandidates()) {
-                candidates.add(MatchResponse.Candidate.newBuilder()
+                candidates.add(Candidate.newBuilder()
                         .setTargetRid(candidate.getTargetRid())
                         .setHnnScore(candidate.getHnnScore())
                         .setExactScore(candidate.getExactScore())

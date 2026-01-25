@@ -121,7 +121,7 @@ public class RequestDeduplicationService {
             throws BiometricException, InterruptedException {
         PendingRequest pending = pendingRequests.get(requestFingerprint);
         if (pending == null) {
-            throw new BiometricException("Pending request not found");
+            throw new BiometricException("Pending request not found", "PENDING_REQUEST_NOT_FOUND");
         }
 
         synchronized (pending) {
@@ -129,7 +129,7 @@ public class RequestDeduplicationService {
             while (!pending.isCompleted()) {
                 long elapsedMs = System.currentTimeMillis() - startTime;
                 if (elapsedMs >= timeoutMs) {
-                    throw new BiometricException("Timeout waiting for pending request");
+                    throw new BiometricException("Timeout waiting for pending request", "PENDING_REQUEST_TIMEOUT");
                 }
 
                 long remainingMs = timeoutMs - elapsedMs;

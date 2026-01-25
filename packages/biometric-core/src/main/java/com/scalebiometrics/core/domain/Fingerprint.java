@@ -53,4 +53,21 @@ public class Fingerprint {
         ARCHIVED,
         DELETED
     }
+
+    // Alias methods for backward compatibility
+    public byte[] getTemplate() {
+        return binaryTemplate;
+    }
+
+    public void setTemplate(byte[] template) {
+        this.binaryTemplate = template;
+    }
+
+    public float[] getEmbedding() {
+        return embeddingVector;
+    }
+
+    public void setEmbedding(float[] embedding) {
+        this.embeddingVector = embedding;
+    }
 }

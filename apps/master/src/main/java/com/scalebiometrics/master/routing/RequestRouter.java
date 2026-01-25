@@ -61,7 +61,7 @@ public class RequestRouter {
     public WorkerClient routeRequest(String ridOrKey) throws BiometricException {
         List<WorkerClient> workers = workerPool.getHealthyWorkers();
         if (workers.isEmpty()) {
-            throw new BiometricException("No healthy workers available");
+            throw new BiometricException("No healthy workers available", "NO_WORKERS_AVAILABLE");
         }
 
         WorkerClient worker = switch (routingStrategy) {
@@ -103,7 +103,7 @@ public class RequestRouter {
             try {
                 // Get worker metrics
                 var metrics = worker.getWorkerStatus();
-                long load = metrics.getTotalMatches();
+                long load = metrics.getMetrics().getTotalMatches();
 
                 if (load < minLoad) {
                     minLoad = load;
@@ -123,7 +123,7 @@ public class RequestRouter {
     public List<WorkerClient> getReplicasForKey(String key) throws BiometricException {
         List<WorkerClient> workers = workerPool.getHealthyWorkers();
         if (workers.isEmpty()) {
-            throw new BiometricException("No healthy workers available");
+            throw new BiometricException("No healthy workers available", "NO_WORKERS_AVAILABLE");
         }
 
         if (replicationFactor <= 0 || replicationFactor >= workers.size()) {

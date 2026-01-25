@@ -101,7 +101,7 @@ public class HybridMatchingEngine {
                 return MatchResult.builder()
                         .probeRid(probeFingerprint.getRid())
                         .candidates(Collections.emptyList())
-                        .status("NO_MATCH")
+                        .status(MatchResult.MatchStatus.NO_MATCH)
                         .matchingTimeMs(System.currentTimeMillis() - startTime)
                         .traceId(traceId)
                         .build();
@@ -131,7 +131,7 @@ public class HybridMatchingEngine {
             return MatchResult.builder()
                     .probeRid(probeFingerprint.getRid())
                     .candidates(finalResults)
-                    .status(finalResults.isEmpty() ? "NO_MATCH" : "MATCH")
+                    .status(finalResults.isEmpty() ? MatchResult.MatchStatus.NO_MATCH : MatchResult.MatchStatus.MATCH_FOUND)
                     .matchingTimeMs(totalTime)
                     .traceId(traceId)
                     .hnswPhaseTimeMs(hnswDuration)
@@ -141,7 +141,7 @@ public class HybridMatchingEngine {
         } catch (Exception e) {
             log.error("[{}] Error during 1:N matching", traceId, e);
             matchingMetrics.recordMatchingError();
-            throw new BiometricException("1:N matching failed: " + e.getMessage(), e);
+            throw new BiometricException("1:N matching failed: " + e.getMessage(), "MATCHING_ERROR", e);
         }
     }
 
@@ -152,26 +152,13 @@ public class HybridMatchingEngine {
      * @param targetRid The target record ID to verify against
      * @return MatchResult with verification score
      */
-    public MatchResult match1To1(Fingerprint probeFingerprint, String targetRid) throws BiometricException {
+    public MatchResult match1To1(Fingerprint probeFingerprint, Fingerprint targetFingerprint) throws BiometricException {
         long startTime = System.currentTimeMillis();
         String traceId = UUID.randomUUID().toString();
 
         try {
             log.info("[{}] Starting 1:1 verification for probe RID: {} vs target RID: {}", 
-                    traceId, probeFingerprint.getRid(), targetRid);
-
-            // Retrieve target fingerprint
-            Fingerprint targetFingerprint = hnswIndexManager.getFingerprint(targetRid);
-            if (targetFingerprint == null) {
-                log.warn("[{}] Target fingerprint not found: {}", traceId, targetRid);
-                return MatchResult.builder()
-                        .probeRid(probeFingerprint.getRid())
-                        .candidates(Collections.emptyList())
-                        .status("TARGET_NOT_FOUND")
-                        .matchingTimeMs(System.currentTimeMillis() - startTime)
-                        .traceId(traceId)
-                        .build();
-            }
+                    traceId, probeFingerprint.getRid(), targetFingerprint.getRid());
 
             // Perform exact matching
             int score = sourceAFISMatcher.match(probeFingerprint, targetFingerprint);
@@ -185,11 +172,11 @@ public class HybridMatchingEngine {
                     .probeRid(probeFingerprint.getRid())
                     .candidates(Collections.singletonList(
                             MatchResult.Candidate.builder()
-                                    .targetRid(targetRid)
+                                    .targetRid(targetFingerprint.getRid())
                                     .score(score)
                                     .build()
                     ))
-                    .status(score >= EXACT_MATCH_THRESHOLD ? "MATCH" : "NO_MATCH")
+                    .status(score >= EXACT_MATCH_THRESHOLD ? MatchResult.MatchStatus.MATCH_FOUND : MatchResult.MatchStatus.NO_MATCH)
                     .matchingTimeMs(totalTime)
                     .traceId(traceId)
                     .build();
@@ -197,7 +184,7 @@ public class HybridMatchingEngine {
         } catch (Exception e) {
             log.error("[{}] Error during 1:1 verification", traceId, e);
             matchingMetrics.recordMatchingError();
-            throw new BiometricException("1:1 verification failed: " + e.getMessage(), e);
+            throw new BiometricException("1:1 verification failed: " + e.getMessage(), "VERIFICATION_ERROR", e);
         }
     }
 
@@ -206,12 +193,12 @@ public class HybridMatchingEngine {
      */
     public void addFingerprint(Fingerprint fingerprint) throws BiometricException {
         try {
-            hnswIndexManager.addFingerprint(fingerprint);
+            hnswIndexManager.addFingerprint(fingerprint.getRid(), fingerprint.getEmbedding(), fingerprint);
             matchingMetrics.recordFingerprintAdded();
             log.debug("Fingerprint added to index: {}", fingerprint.getRid());
         } catch (Exception e) {
             log.error("Error adding fingerprint to index", e);
-            throw new BiometricException("Failed to add fingerprint: " + e.getMessage(), e);
+            throw new BiometricException("Failed to add fingerprint: " + e.getMessage(), "ADD_FINGERPRINT_ERROR", e);
         }
     }
 
@@ -225,7 +212,7 @@ public class HybridMatchingEngine {
             log.debug("Fingerprint removed from index: {}", rid);
         } catch (Exception e) {
             log.error("Error removing fingerprint from index", e);
-            throw new BiometricException("Failed to remove fingerprint: " + e.getMessage(), e);
+            throw new BiometricException("Failed to remove fingerprint: " + e.getMessage(), "REMOVE_FINGERPRINT_ERROR", e);
         }
     }
 
@@ -258,7 +245,7 @@ public class HybridMatchingEngine {
 
         } catch (Exception e) {
             log.error("Error during HNSW search", e);
-            throw new BiometricException("HNSW search failed: " + e.getMessage(), e);
+            throw new BiometricException("HNSW search failed: " + e.getMessage(), "HNSW_SEARCH_ERROR", e);
         }
     }
 
@@ -312,7 +299,7 @@ public class HybridMatchingEngine {
 
         } catch (Exception e) {
             log.error("Error during exact matching", e);
-            throw new BiometricException("Exact matching failed: " + e.getMessage(), e);
+            throw new BiometricException("Exact matching failed: " + e.getMessage(), "EXACT_MATCHING_ERROR", e);
         }
     }
 

@@ -15,4 +15,14 @@ import lombok.NoArgsConstructor;
 public class HNSWCandidate {
     private String targetRid;
     private float score;
+    private float distance;
+
+    // Alias methods for backward compatibility
+    public String getRid() {
+        return targetRid;
+    }
+
+    public void setRid(String rid) {
+        this.targetRid = rid;
+    }
 }

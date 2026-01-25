@@ -87,7 +87,7 @@ public class HNSWIndexManager {
 
         } catch (Exception e) {
             log.error("Failed to initialize HNSW index", e);
-            throw new BiometricException("HNSW initialization failed: " + e.getMessage(), e);
+            throw new BiometricException("HNSW initialization failed: " + e.getMessage(), "HNSW_INIT_ERROR", e);
         } finally {
             lock.writeLock().unlock();
         }
@@ -103,7 +103,7 @@ public class HNSWIndexManager {
     public void addFingerprint(String rid, float[] embedding, Fingerprint fingerprint) throws BiometricException {
         if (embedding == null || embedding.length != VECTOR_DIMENSION) {
             throw new BiometricException("Invalid embedding dimension: expected " + VECTOR_DIMENSION + 
-                    ", got " + (embedding != null ? embedding.length : 0));
+                    ", got " + (embedding != null ? embedding.length : 0), "INVALID_EMBEDDING_DIMENSION");
         }
 
         try {
@@ -166,7 +166,7 @@ public class HNSWIndexManager {
     public List<HNSWCandidate> search(float[] embedding, int k) throws BiometricException {
         if (embedding == null || embedding.length != VECTOR_DIMENSION) {
             throw new BiometricException("Invalid embedding dimension: expected " + VECTOR_DIMENSION + 
-                    ", got " + (embedding != null ? embedding.length : 0));
+                    ", got " + (embedding != null ? embedding.length : 0), "INVALID_EMBEDDING_DIMENSION");
         }
 
         long startTime = System.currentTimeMillis();
@@ -240,7 +240,7 @@ public class HNSWIndexManager {
 
         } catch (IOException e) {
             log.error("Failed to save HNSW index", e);
-            throw new BiometricException("Failed to save index: " + e.getMessage(), e);
+            throw new BiometricException("Failed to save index: " + e.getMessage(), "SAVE_INDEX_ERROR", e);
         } finally {
             lock.readLock().unlock();
         }
@@ -271,7 +271,7 @@ public class HNSWIndexManager {
 
         } catch (IOException | ClassNotFoundException e) {
             log.error("Failed to load HNSW index", e);
-            throw new BiometricException("Failed to load index: " + e.getMessage(), e);
+            throw new BiometricException("Failed to load index: " + e.getMessage(), "LOAD_INDEX_ERROR", e);
         } finally {
             lock.writeLock().unlock();
         }
@@ -303,6 +303,22 @@ public class HNSWIndexManager {
             log.info("HNSW index cleared");
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Get fingerprint by RID
+     */
+    public Fingerprint getFingerprint(String rid) {
+        try {
+            lock.readLock().lock();
+            Integer id = ridToIdMap.get(rid);
+            if (id == null) {
+                return null;
+            }
+            return fingerprintCache.get(id);
+        } finally {
+            lock.readLock().unlock();
         }
     }
 

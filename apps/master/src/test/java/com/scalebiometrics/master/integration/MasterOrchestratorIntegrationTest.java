@@ -180,7 +180,7 @@ class MasterOrchestratorIntegrationTest {
     private MatchResult createTestMatchResult() {
         MatchResult result = new MatchResult();
         result.setProbeRid("probe-1");
-        result.setStatus("MATCH");
+        result.setStatus(MatchResult.MatchStatus.MATCH_FOUND);
         result.setMatchingTimeMs(150);
         return result;
     }

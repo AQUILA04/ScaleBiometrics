@@ -58,7 +58,7 @@ public class OffHeapMemoryManager {
 
         } catch (Exception e) {
             log.error("Error initializing OffHeapMemoryManager", e);
-            throw new BiometricException("Failed to initialize off-heap memory: " + e.getMessage(), e);
+            throw new BiometricException("Failed to initialize off-heap memory: " + e.getMessage(), "OFFHEAP_INIT_ERROR", e);
         } finally {
             lock.writeLock().unlock();
         }
@@ -69,7 +69,7 @@ public class OffHeapMemoryManager {
      */
     public void storeTemplate(String rid, byte[] binaryTemplate) throws BiometricException {
         if (binaryTemplate == null || binaryTemplate.length == 0) {
-            throw new BiometricException("Invalid binary template");
+            throw new BiometricException("Invalid binary template", "INVALID_TEMPLATE");
         }
 
         try {
@@ -77,7 +77,7 @@ public class OffHeapMemoryManager {
 
             // Check if already stored
             if (templates.containsKey(rid)) {
-                throw new BiometricException("Template already stored for RID: " + rid);
+                throw new BiometricException("Template already stored for RID: " + rid, "TEMPLATE_ALREADY_EXISTS");
             }
 
             long templateSize = binaryTemplate.length;
@@ -86,7 +86,7 @@ public class OffHeapMemoryManager {
             if (totalAllocatedBytes + templateSize > maxAllocatedBytes) {
                 // Try to evict least recently used templates
                 if (!evictLRU(templateSize)) {
-                    throw new BiometricException("Off-heap memory limit reached");
+                    throw new BiometricException("Off-heap memory limit reached", "MEMORY_LIMIT_EXCEEDED");
                 }
             }
 
@@ -111,7 +111,7 @@ public class OffHeapMemoryManager {
 
         } catch (Exception e) {
             log.error("Error storing template in off-heap memory", e);
-            throw new BiometricException("Failed to store template: " + e.getMessage(), e);
+            throw new BiometricException("Failed to store template: " + e.getMessage(), "STORE_TEMPLATE_ERROR", e);
         } finally {
             lock.writeLock().unlock();
         }
@@ -141,7 +141,7 @@ public class OffHeapMemoryManager {
 
         } catch (Exception e) {
             log.error("Error retrieving template from off-heap memory", e);
-            throw new BiometricException("Failed to retrieve template: " + e.getMessage(), e);
+            throw new BiometricException("Failed to retrieve template: " + e.getMessage(), "GET_TEMPLATE_ERROR", e);
         } finally {
             lock.readLock().unlock();
         }
@@ -164,7 +164,7 @@ public class OffHeapMemoryManager {
 
         } catch (Exception e) {
             log.error("Error removing template from off-heap memory", e);
-            throw new BiometricException("Failed to remove template: " + e.getMessage(), e);
+            throw new BiometricException("Failed to remove template: " + e.getMessage(), "REMOVE_TEMPLATE_ERROR", e);
         } finally {
             lock.writeLock().unlock();
         }

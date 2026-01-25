@@ -53,7 +53,7 @@ class HybridMatchingEngineTest {
                 .thenReturn(createTestCandidates(5));
 
         // Mock SourceAFIS matching
-        when(sourceAFISMatcher.match(any(), any()))
+        when(sourceAFISMatcher.match(any(byte[].class), any(byte[].class)))
                 .thenReturn(85);  // 85% match score
 
         // Act
@@ -67,7 +67,7 @@ class HybridMatchingEngineTest {
 
         // Verify interactions
         verify(hnswIndexManager, times(1)).search(any(), eq(topK));
-        verify(sourceAFISMatcher, atLeast(1)).match(any(), any());
+        verify(sourceAFISMatcher, atLeast(1)).match(any(byte[].class), any(byte[].class));
     }
 
     @Test
@@ -77,7 +77,7 @@ class HybridMatchingEngineTest {
         Fingerprint targetFingerprint = createTestFingerprint("target-1");
 
         // Mock SourceAFIS matching
-        when(sourceAFISMatcher.match(any(), any()))
+        when(sourceAFISMatcher.match(any(byte[].class), any(byte[].class)))
                 .thenReturn(90);  // 90% match score
 
         // Act
@@ -90,8 +90,8 @@ class HybridMatchingEngineTest {
         assertTrue(result.getCandidates().get(0).isMatch());
 
         // Verify interactions
-        verify(sourceAFISMatcher, times(1)).match(any(), any());
-        verify(matchingMetrics, times(1)).recordMatch1To1(anyLong(), anyBoolean());
+        verify(sourceAFISMatcher, times(1)).match(any(byte[].class), any(byte[].class));
+        verify(matchingMetrics, times(1)).recordMatching1To1(anyLong());
     }
 
     @Test
@@ -103,9 +103,9 @@ class HybridMatchingEngineTest {
         hybridMatchingEngine.addFingerprint(fingerprint);
 
         // Assert
-        verify(hnswIndexManager, times(1)).add(any(), any());
+        verify(hnswIndexManager, times(1)).addFingerprint(anyString(), any(float[].class), any(Fingerprint.class));
         verify(offHeapMemoryManager, times(1)).storeTemplate(anyString(), any());
-        verify(matchingMetrics, times(1)).recordIndexAdd();
+        verify(matchingMetrics, times(1)).recordFingerprintAdded();
     }
 
     @Test
@@ -117,9 +117,9 @@ class HybridMatchingEngineTest {
         hybridMatchingEngine.removeFingerprint(rid);
 
         // Assert
-        verify(hnswIndexManager, times(1)).remove(rid);
+        verify(hnswIndexManager, times(1)).removeFingerprint(rid);
         verify(offHeapMemoryManager, times(1)).removeTemplate(rid);
-        verify(matchingMetrics, times(1)).recordIndexRemove();
+        verify(matchingMetrics, times(1)).recordFingerprintRemoved();
     }
 
     @Test
@@ -137,7 +137,7 @@ class HybridMatchingEngineTest {
         // Assert
         assertNotNull(result);
         assertTrue(result.getCandidates().isEmpty());
-        assertEquals("NO_MATCH", result.getStatus());
+        assertEquals(MatchResult.MatchStatus.NO_MATCH, result.getStatus());
     }
 
     @Test
@@ -179,11 +179,11 @@ class HybridMatchingEngineTest {
     private Fingerprint createTestFingerprint(String rid) {
         Fingerprint fingerprint = new Fingerprint();
         fingerprint.setRid(rid);
-        fingerprint.setFingerIndex(0);
+        fingerprint.setFingerIndex(Fingerprint.FingerIndex.RIGHT_INDEX);
         fingerprint.setBinaryTemplate(new byte[256]);
         fingerprint.setEmbeddingVector(new float[512]);
         fingerprint.setQuality(95);
-        fingerprint.setStatus("VALID");
+        fingerprint.setStatus(Fingerprint.FingerprintStatus.ACTIVE);
         return fingerprint;
     }
 

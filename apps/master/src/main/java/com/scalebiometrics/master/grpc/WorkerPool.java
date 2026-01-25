@@ -55,7 +55,7 @@ public class WorkerPool {
 
         } catch (Exception e) {
             log.error("Failed to register worker {}", workerId, e);
-            throw new BiometricException("Failed to register worker: " + e.getMessage(), e);
+            throw new BiometricException("Failed to register worker", e.getMessage(), e);
         } finally {
             lock.writeLock().unlock();
         }
@@ -70,7 +70,7 @@ public class WorkerPool {
 
             WorkerClient client = workers.remove(workerId);
             if (client != null) {
-                client.close();
+                client.shutdown();
             }
 
             workerMetadata.remove(workerId);
@@ -90,11 +90,11 @@ public class WorkerPool {
 
             WorkerClient client = workers.get(workerId);
             if (client == null) {
-                throw new BiometricException("Worker not found: " + workerId);
+                throw new BiometricException("Worker not found", workerId);
             }
 
-            if (!client.isConnected()) {
-                throw new BiometricException("Worker not connected: " + workerId);
+            if (client.healthCheck() == false) {
+                throw new BiometricException("Worker not connected", workerId);
             }
 
             return client;
@@ -177,7 +177,7 @@ public class WorkerPool {
 
             for (WorkerClient client : workers.values()) {
                 try {
-                    client.close();
+                    client.shutdown();
                 } catch (Exception e) {
                     log.error("Error closing worker connection", e);
                 }

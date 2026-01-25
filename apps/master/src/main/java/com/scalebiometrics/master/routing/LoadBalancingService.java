@@ -44,7 +44,7 @@ public class LoadBalancingService {
                 k -> new WorkerLoadMetrics(workerId)
         );
         metrics.incrementRequestCount();
-        meterRegistry.gauge("worker.requests.pending", () -> metrics.getPendingRequests());
+        meterRegistry.gauge("worker.requests.pending", metrics, WorkerLoadMetrics::getPendingRequests);
     }
 
     /**
@@ -55,8 +55,8 @@ public class LoadBalancingService {
         if (metrics != null) {
             metrics.recordResponse(responseTimeMs);
             meterRegistry.gauge("worker.response.time.ms", 
-                    Collections.singletonMap("worker_id", workerId), 
-                    () -> metrics.getAverageResponseTimeMs());
+                    Collections.singletonList(io.micrometer.core.instrument.Tag.of("worker_id", workerId)), 
+                    metrics, WorkerLoadMetrics::getAverageResponseTimeMs);
         }
     }
 
