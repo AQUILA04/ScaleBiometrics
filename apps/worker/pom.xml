@@ -95,15 +95,8 @@
         </dependency>
 
         <!-- JVector (Pure Java HNSW) -->
-        <dependency>
-            <groupId>io.github.jbellis</groupId>
-            <artifactId>jvector-base</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>io.github.jbellis</groupId>
-            <artifactId>jvector-jdk</artifactId>
-        </dependency>
+        <!-- Note: HNSW implementation is custom-built in HybridMatchingEngine
+             as jvector artifacts are not available in public Maven repositories -->
 
         <!-- Observability -->
         <dependency>

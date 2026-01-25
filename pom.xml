@@ -33,7 +33,7 @@
         <protobuf.version>3.25.1</protobuf.version>
         <minio.version>8.5.7</minio.version>
         <sourceafis.version>3.18.1</sourceafis.version>
-        <jvector.version>0.4.0</jvector.version>
+        <!-- jvector.version>0.4.0</jvector.version --> <!-- Custom HNSW implementation -->
         <micrometer.version>1.12.0</micrometer.version>
         <otel.version>1.32.0</otel.version>
     </properties>
@@ -104,18 +104,8 @@
                 <version>${protobuf.version}</version>
             </dependency>
 
-            <!-- JVector (Pure Java HNSW) -->
-            <dependency>
-                <groupId>io.github.jbellis</groupId>
-                <artifactId>jvector-base</artifactId>
-                <version>${jvector.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>io.github.jbellis</groupId>
-                <artifactId>jvector-jdk</artifactId>
-                <version>${jvector.version}</version>
-            </dependency>
+            <!-- Note: JVector HNSW implementation will be custom-built
+                 as jvector artifacts are not available in public Maven repositories -->
         </dependencies>
     </dependencyManagement>
 
