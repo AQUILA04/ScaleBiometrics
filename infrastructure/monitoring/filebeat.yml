@@ -1,0 +1,40 @@
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/scalebiometrics/*.log
+  fields:
+    service: scalebiometrics
+  multiline.pattern: '^\['
+  multiline.negate: true
+  multiline.match: after
+
+- type: docker
+  enabled: true
+  containers.ids:
+    - '*'
+  processors:
+    - add_docker_metadata: ~
+    - add_kubernetes_metadata: ~
+
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+  - add_kubernetes_metadata: ~
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "filebeat-%{[agent.version]}-%{+yyyy.MM.dd}"
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644

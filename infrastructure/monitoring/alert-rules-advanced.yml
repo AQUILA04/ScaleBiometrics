@@ -1,0 +1,239 @@
+groups:
+  - name: scalebiometrics.rules
+    interval: 30s
+    rules:
+      # ============================================
+      # Matching Engine Alerts
+      # ============================================
+      
+      - alert: HighMatchingLatency
+        expr: histogram_quantile(0.95, rate(matching_latency_bucket[5m])) > 2000
+        for: 5m
+        labels:
+          severity: critical
+          component: matching-engine
+        annotations:
+          summary: "High matching latency detected"
+          description: "P95 latency is {{ $value }}ms (target: < 2000ms)"
+          runbook_url: "https://wiki.example.com/runbooks/high-matching-latency"
+
+      - alert: MatchingErrorRateHigh
+        expr: rate(matching_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          component: matching-engine
+        annotations:
+          summary: "High matching error rate"
+          description: "Error rate is {{ $value }} errors/sec"
+          runbook_url: "https://wiki.example.com/runbooks/high-error-rate"
+
+      - alert: MatchingThroughputLow
+        expr: rate(matching_1n_total[5m]) < 100
+        for: 10m
+        labels:
+          severity: warning
+          component: matching-engine
+        annotations:
+          summary: "Low matching throughput"
+          description: "1:N throughput is {{ $value }} req/sec (target: > 500)"
+          runbook_url: "https://wiki.example.com/runbooks/low-throughput"
+
+      - alert: HNSWIndexGrowthAbnormal
+        expr: rate(index_add_total[1h]) > 100000
+        for: 15m
+        labels:
+          severity: warning
+          component: hnsw-index
+        annotations:
+          summary: "Abnormal HNSW index growth rate"
+          description: "Index growth rate is {{ $value }} vectors/sec"
+          runbook_url: "https://wiki.example.com/runbooks/index-growth"
+
+      - alert: OffHeapMemoryPressure
+        expr: (off_heap_used_bytes / off_heap_max_bytes) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: memory-management
+        annotations:
+          summary: "Off-heap memory pressure detected"
+          description: "Off-heap memory usage is {{ $value | humanizePercentage }}"
+          runbook_url: "https://wiki.example.com/runbooks/memory-pressure"
+
+      # ============================================
+      # Master Orchestrator Alerts
+      # ============================================
+
+      - alert: NoActiveMaster
+        expr: count(up{job="master"}==1) == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: master-orchestrator
+        annotations:
+          summary: "No active master instance"
+          description: "All master instances are down"
+          runbook_url: "https://wiki.example.com/runbooks/no-active-master"
+
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_state == 1
+        for: 5m
+        labels:
+          severity: warning
+          component: circuit-breaker
+        annotations:
+          summary: "Circuit breaker is open"
+          description: "Circuit breaker for {{ $labels.worker_id }} is open"
+          runbook_url: "https://wiki.example.com/runbooks/circuit-breaker-open"
+
+      - alert: WorkerHealthDegraded
+        expr: (workers_healthy / workers_total) < 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: worker-health
+        annotations:
+          summary: "Worker health degraded"
+          description: "Only {{ $value | humanizePercentage }} of workers are healthy"
+          runbook_url: "https://wiki.example.com/runbooks/worker-health"
+
+      - alert: WorkerUnresponsive
+        expr: rate(worker_response_time_ms[5m]) > 5000
+        for: 5m
+        labels:
+          severity: warning
+          component: worker-communication
+        annotations:
+          summary: "Worker response time too high"
+          description: "Worker {{ $labels.worker_id }} response time is {{ $value }}ms"
+          runbook_url: "https://wiki.example.com/runbooks/worker-unresponsive"
+
+      - alert: LoadImbalance
+        expr: (max(worker_requests_pending) - min(worker_requests_pending)) / avg(worker_requests_pending) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: load-balancing
+        annotations:
+          summary: "Load imbalance detected"
+          description: "Load distribution coefficient is {{ $value }}"
+          runbook_url: "https://wiki.example.com/runbooks/load-imbalance"
+
+      - alert: CacheMissRateHigh
+        expr: rate(cache_misses_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) > 0.5
+        for: 10m
+        labels:
+          severity: info
+          component: caching
+        annotations:
+          summary: "High cache miss rate"
+          description: "Cache miss rate is {{ $value | humanizePercentage }}"
+          runbook_url: "https://wiki.example.com/runbooks/cache-miss-rate"
+
+      - alert: DeduplicationIneffective
+        expr: rate(deduplication_detected_total[5m]) < 0.1
+        for: 30m
+        labels:
+          severity: info
+          component: deduplication
+        annotations:
+          summary: "Low deduplication rate"
+          description: "Deduplication rate is {{ $value }} duplicates/sec"
+          runbook_url: "https://wiki.example.com/runbooks/deduplication-rate"
+
+      - alert: FailoverEventFrequent
+        expr: rate(failover_events_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: failover
+        annotations:
+          summary: "Frequent failover events"
+          description: "Failover rate is {{ $value }} events/sec"
+          runbook_url: "https://wiki.example.com/runbooks/failover-frequency"
+
+      # ============================================
+      # Infrastructure Alerts
+      # ============================================
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: db_connection_pool_active >= db_connection_pool_max * 0.9
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "Active connections: {{ $value }}/{{ $labels.max }}"
+          runbook_url: "https://wiki.example.com/runbooks/db-pool-exhausted"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis memory usage is {{ $value | humanizePercentage }}"
+          runbook_url: "https://wiki.example.com/runbooks/redis-memory"
+
+      - alert: KafkaProducerLag
+        expr: kafka_producer_record_send_total_lag_sum > 10000
+        for: 10m
+        labels:
+          severity: warning
+          component: kafka
+        annotations:
+          summary: "Kafka producer lag detected"
+          description: "Producer lag is {{ $value }} records"
+          runbook_url: "https://wiki.example.com/runbooks/kafka-lag"
+
+      - alert: DiskSpaceLow
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Disk space running low"
+          description: "Available disk space is {{ $value | humanizePercentage }}"
+          runbook_url: "https://wiki.example.com/runbooks/disk-space"
+
+      # ============================================
+      # SLO Alerts
+      # ============================================
+
+      - alert: SLO_MatchingLatency_Breach
+        expr: histogram_quantile(0.99, rate(matching_latency_bucket[5m])) > 2000
+        for: 15m
+        labels:
+          severity: critical
+          slo: matching-latency
+        annotations:
+          summary: "SLO breach: Matching latency"
+          description: "P99 latency is {{ $value }}ms (SLO: < 2000ms)"
+          runbook_url: "https://wiki.example.com/runbooks/slo-latency"
+
+      - alert: SLO_Availability_Breach
+        expr: (1 - (rate(matching_errors_total[5m]) / rate(matching_1n_total[5m]))) < 0.999
+        for: 15m
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: "SLO breach: System availability"
+          description: "Availability is {{ $value | humanizePercentage }} (SLO: > 99.9%)"
+          runbook_url: "https://wiki.example.com/runbooks/slo-availability"
+
+      - alert: SLO_ThroughputGuarantee_Breach
+        expr: rate(matching_1n_total[5m]) < 500
+        for: 30m
+        labels:
+          severity: warning
+          slo: throughput
+        annotations:
+          summary: "SLO warning: Throughput guarantee"
+          description: "Throughput is {{ $value }} req/sec (SLO: > 500)"
+          runbook_url: "https://wiki.example.com/runbooks/slo-throughput"
