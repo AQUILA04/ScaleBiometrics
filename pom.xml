@@ -97,6 +97,13 @@
                 <version>${sourceafis.version}</version>
             </dependency>
 
+            <!-- Protobuf Java -->
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+
             <!-- JVector (Pure Java HNSW) -->
             <dependency>
                 <groupId>io.github.jbellis</groupId>
