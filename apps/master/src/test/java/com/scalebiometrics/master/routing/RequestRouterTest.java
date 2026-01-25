@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
 
 /**
  * RequestRouter Unit Tests
@@ -51,9 +52,9 @@ class RequestRouterTest {
     @Test
     void testHashRouting() throws BiometricException {
         // Arrange
-        when(worker1.getWorkerId()).thenReturn("worker-1");
-        when(worker2.getWorkerId()).thenReturn("worker-2");
-        when(worker3.getWorkerId()).thenReturn("worker-3");
+        lenient().when(worker1.getWorkerId()).thenReturn("worker-1");
+        lenient().when(worker2.getWorkerId()).thenReturn("worker-2");
+        lenient().when(worker3.getWorkerId()).thenReturn("worker-3");
         requestRouter.setRoutingStrategy(RequestRouter.RoutingStrategy.HASH);
         String rid1 = "RID-123";
         String rid2 = "RID-456";
@@ -110,9 +111,9 @@ class RequestRouterTest {
     void testNoHealthyWorkers() {
         // Arrange
         when(workerPool.getHealthyWorkers()).thenReturn(new ArrayList<>());
-        when(worker1.getWorkerId()).thenReturn("worker-1");
-        when(worker2.getWorkerId()).thenReturn("worker-2");
-        when(worker3.getWorkerId()).thenReturn("worker-3");
+        lenient().when(worker1.getWorkerId()).thenReturn("worker-1");
+        lenient().when(worker2.getWorkerId()).thenReturn("worker-2");
+        lenient().when(worker3.getWorkerId()).thenReturn("worker-3");
 
         // Act & Assert
         assertThrows(BiometricException.class, () -> {
@@ -123,9 +124,9 @@ class RequestRouterTest {
     @Test
     void testGetReplicasForKey() throws BiometricException {
         // Arrange
-        when(worker1.getWorkerId()).thenReturn("worker-1");
-        when(worker2.getWorkerId()).thenReturn("worker-2");
-        when(worker3.getWorkerId()).thenReturn("worker-3");
+        lenient().when(worker1.getWorkerId()).thenReturn("worker-1");
+        lenient().when(worker2.getWorkerId()).thenReturn("worker-2");
+        lenient().when(worker3.getWorkerId()).thenReturn("worker-3");
         requestRouter.setReplicationFactor(2);
 
         // Act

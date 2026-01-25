@@ -32,14 +32,15 @@ public class RequestRouter {
     private String routingStrategyStr;
 
     @Value("${master.routing.replication-factor:1}")
-    private int replicationFactor;
+    private int replicationFactor = 1;  // Default replication factor
 
     private final WorkerPool workerPool;
-    private RoutingStrategy routingStrategy;
+    private RoutingStrategy routingStrategy = RoutingStrategy.HASH;  // Default strategy
     private final AtomicInteger roundRobinIndex = new AtomicInteger(0);
 
     public RequestRouter(WorkerPool workerPool) {
         this.workerPool = workerPool;
+        this.routingStrategy = RoutingStrategy.HASH;  // Initialize with default
     }
 
     /**
