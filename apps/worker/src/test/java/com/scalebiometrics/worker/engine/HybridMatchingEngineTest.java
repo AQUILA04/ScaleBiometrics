@@ -67,8 +67,7 @@ class HybridMatchingEngineTest {
         assertTrue(result.getMatchingTimeMs() >= 0);
 
         // Verify interactions
-        lenient().verify(hnswIndexManager, atLeast(0)).search(any(), eq(topK));
-        lenient().verify(sourceAFISMatcher, atLeast(0)).match(any(byte[].class), any(byte[].class));
+        // Verify is not called with lenient(), just skip verification
     }
 
     @Test
@@ -91,8 +90,7 @@ class HybridMatchingEngineTest {
         assertTrue(result.getCandidates().size() >= 0);
 
         // Verify interactions
-        lenient().verify(sourceAFISMatcher, atLeast(0)).match(any(byte[].class), any(byte[].class));
-        lenient().verify(matchingMetrics, atLeast(0)).recordMatching1To1(anyLong());
+        // Verify is not called with lenient(), just skip verification
     }
 
     @Test
