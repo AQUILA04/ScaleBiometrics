@@ -82,6 +82,19 @@ master:
     success-threshold: 2
     timeout-ms: 60000
   
+  # Health Monitoring Configuration
+  health-monitoring:
+    enabled: true
+    check-interval-ms: 10000
+    heartbeat-timeout-ms: 30000
+    consecutive-failures-threshold: 3
+  
+  # Failover Configuration
+  failover:
+    enabled: true
+    max-recovery-attempts: 3
+    initial-recovery-delay-ms: 5000
+  
   # Worker Discovery
   worker-discovery:
     enabled: true
