@@ -12,7 +12,9 @@ on:
       - 'release/**'
     paths:
       - 'apps/**'
+      - 'packages/**'
       - 'infrastructure/keycloak/**'
+      - 'Dockerfile.*'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
@@ -20,7 +22,9 @@ on:
       - develop
     paths:
       - 'apps/**'
+      - 'packages/**'
       - 'infrastructure/keycloak/**'
+      - 'Dockerfile.*'
       - '.github/workflows/docker-build.yml'
 
 env:
@@ -29,8 +33,11 @@ env:
 
 jobs:
   build-backend:
-    name: Build Backend Image
+    name: Build Backend Images
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [api, worker, master]
     
     steps:
       - name: Checkout code
@@ -47,22 +54,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Extract metadata for ${{ matrix.module }}
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/api
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.module }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=sha
 
-      - name: Build and push
+      - name: Build and push ${{ matrix.module }}
         uses: docker/build-push-action@v5
         with:
-          context: ./apps/api
-          file: ./apps/api/Dockerfile
+          context: .
+          file: ./Dockerfile.${{ matrix.module }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

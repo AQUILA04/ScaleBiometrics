@@ -1,0 +1,124 @@
+groups:
+  - name: scalebiometrics_alerts
+    interval: 30s
+    rules:
+      # High matching latency alert
+      - alert: HighMatchingLatency
+        expr: histogram_quantile(0.95, rate(matching_latency_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: critical
+          component: matching-engine
+        annotations:
+          summary: "High matching latency detected"
+          description: "P95 matching latency is {{ $value }}s, exceeds 2s SLO"
+
+      # Worker CPU usage alert
+      - alert: WorkerHighCPU
+        expr: process_cpu_usage > 0.7
+        for: 2m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "Worker CPU usage high"
+          description: "Worker {{ $labels.instance }} CPU usage is {{ $value | humanizePercentage }}"
+
+      # Worker memory pressure
+      - alert: WorkerHighMemory
+        expr: jvm_memory_usage_percent{area="heap"} > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "Worker heap memory usage high"
+          description: "Worker {{ $labels.instance }} heap usage is {{ $value | humanizePercentage }}"
+
+      # Off-Heap memory alert
+      - alert: OffHeapMemoryHigh
+        expr: jvm_memory_usage_percent{area="nonheap"} > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: "Off-Heap memory usage critical"
+          description: "Worker {{ $labels.instance }} off-heap usage is {{ $value | humanizePercentage }}"
+
+      # gRPC queue depth alert
+      - alert: HighGRPCQueueDepth
+        expr: grpc_server_processing_duration_seconds_bucket{le="+Inf"} > 100
+        for: 1m
+        labels:
+          severity: warning
+          component: grpc
+        annotations:
+          summary: "High gRPC queue depth"
+          description: "gRPC queue depth is {{ $value }}, may indicate worker saturation"
+
+      # Kafka consumer lag alert
+      - alert: HighKafkaConsumerLag
+        expr: kafka_consumer_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+          component: kafka
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Kafka consumer lag is {{ $value }}, may indicate processing bottleneck"
+
+      # API Gateway error rate alert
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          component: api-gateway
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }}, exceeds 1% threshold"
+
+      # Database connection pool exhaustion
+      - alert: DBConnectionPoolExhausted
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "Active connections {{ $value | humanizePercentage }} of max"
+
+      # HNSW index size alert
+      - alert: HNSWIndexSizeHigh
+        expr: hnsw_index_size_bytes > 10737418240  # 10GB
+        for: 5m
+        labels:
+          severity: warning
+          component: matching-engine
+        annotations:
+          summary: "HNSW index size growing"
+          description: "HNSW index size is {{ $value | humanize }}B"
+
+      # Worker node down
+      - alert: WorkerNodeDown
+        expr: up{job="scalebiometrics-workers"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: "Worker node is down"
+          description: "Worker {{ $labels.instance }} is not responding to metrics scrape"
+
+      # Master orchestrator down
+      - alert: MasterOrchestratorDown
+        expr: up{job="scalebiometrics-master"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: master
+        annotations:
+          summary: "Master orchestrator is down"
+          description: "Master orchestrator is not responding to metrics scrape"

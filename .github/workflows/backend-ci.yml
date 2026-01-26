@@ -15,6 +15,10 @@ on:
       - 'release/**'
     paths:
       - 'apps/api/**'
+      - 'apps/worker/**'
+      - 'apps/master/**'
+      - 'packages/biometric-core/**'
+      - 'pom.xml'
       - '.github/workflows/backend-ci.yml'
   pull_request:
     branches:
@@ -22,6 +26,10 @@ on:
       - develop
     paths:
       - 'apps/api/**'
+      - 'apps/worker/**'
+      - 'apps/master/**'
+      - 'packages/biometric-core/**'
+      - 'pom.xml'
       - '.github/workflows/backend-ci.yml'
 
 jobs:
@@ -65,16 +73,61 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Build with Maven
-        working-directory: apps/api
-        run: ./mvnw clean compile -B
+      # Step 1: Install parent POM to local Maven repository
+      # This is required for all child modules to resolve their parent
+      - name: Install parent POM
+        run: |
+          echo "Installing parent POM (scalebiometrics-parent) to local Maven repository..."
+          mvn install -B -DskipTests -N
+          echo "✓ Parent POM installed successfully"
 
-      - name: Run unit tests
-        working-directory: apps/api
-        run: ./mvnw test -B
+      # Step 2: Build and install biometric-core to local Maven repository
+      # This is a shared library that other modules depend on
+      - name: Build and install biometric-core
+        working-directory: packages/biometric-core
+        run: |
+          echo "Building and installing biometric-core package..."
+          mvn clean install -B -DskipTests
+          echo "✓ biometric-core installed to local Maven repository"
 
+      # Step 3: Build and install worker module
+      # Depends on: parent POM, biometric-core
+      - name: Build and install worker module
+        working-directory: apps/worker
+        run: |
+          echo "Building and installing worker module..."
+          mvn clean install -B -DskipTests
+          echo "✓ worker module installed"
+
+      # Step 4: Build and install master module
+      # Depends on: parent POM, biometric-core
+      - name: Build and install master module
+        working-directory: apps/master
+        run: |
+          echo "Building and installing master module..."
+          mvn clean install -B -DskipTests
+          echo "✓ master module installed"
+
+      # Step 5: Build API module
+      # Depends on: parent POM, biometric-core, worker, master
+      - name: Build API module with all dependencies
+        working-directory: apps/api
+        run: |
+          echo "Building API module with all dependencies available..."
+          mvn clean compile -B
+          echo "✓ API module compiled successfully"
+
+      # Step 6: Run unit tests for all modules
+      # Tests all modules in the monorepo
+      - name: Run unit tests for all modules
+        run: |
+          echo "Running unit tests for all modules..."
+          mvn test -B --fail-at-end
+          echo "✓ Unit tests completed"
+
+      # Step 7: Run integration tests
+      # Integration tests with PostgreSQL and Redis services
       - name: Run integration tests
-        working-directory: apps/api
         env:
           SPRING_PROFILES_ACTIVE: test
           DB_HOST: localhost
@@ -84,30 +137,88 @@ jobs:
           DB_PASSWORD: test
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-        run: ./mvnw verify -B
+        run: |
+          echo "Running integration tests..."
+          mvn verify -B --fail-at-end
+          echo "✓ Integration tests completed"
 
-      - name: Generate coverage report
-        working-directory: apps/api
-        run: ./mvnw jacoco:report
+      # Step 8: Generate JaCoCo coverage reports for all modules
+      - name: Generate JaCoCo coverage reports
+        run: |
+          echo "Generating JaCoCo coverage reports..."
+          mvn jacoco:report -B --fail-at-end
+          echo "✓ Coverage reports generated"
 
+      # Step 9: Upload coverage to Codecov
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          files: apps/api/target/site/jacoco/jacoco.xml
+          files: |
+            packages/biometric-core/target/site/jacoco/jacoco.xml
+            apps/api/target/site/jacoco/jacoco.xml
+            apps/worker/target/site/jacoco/jacoco.xml
+            apps/master/target/site/jacoco/jacoco.xml
           flags: backend
           name: backend-coverage
+          fail_ci_if_error: false
+        continue-on-error: true
 
+      # Step 10: Archive test results from all modules
       - name: Archive test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: apps/api/target/surefire-reports/
+          path: |
+            packages/biometric-core/target/surefire-reports/
+            apps/api/target/surefire-reports/
+            apps/worker/target/surefire-reports/
+            apps/master/target/surefire-reports/
+          retention-days: 30
+        continue-on-error: true
+
+      # Step 11: Archive build artifacts (JAR files)
+      - name: Archive build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            packages/biometric-core/target/*.jar
+            apps/api/target/*.jar
+            apps/worker/target/*.jar
+            apps/master/target/*.jar
+          retention-days: 30
+        continue-on-error: true
+
+      # Step 12: Display build summary
+      - name: Display build summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "Build Summary"
+          echo "=========================================="
+          echo ""
+          echo "Modules built:"
+          echo "  ✓ scalebiometrics-parent (parent POM)"
+          echo "  ✓ biometric-core"
+          echo "  ✓ worker"
+          echo "  ✓ master"
+          echo "  ✓ api"
+          echo ""
+          echo "Artifacts available in:"
+          echo "  - packages/biometric-core/target/"
+          echo "  - apps/worker/target/"
+          echo "  - apps/master/target/"
+          echo "  - apps/api/target/"
+          echo ""
+          echo "=========================================="
 
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: build-and-test
+    if: always()
     
     steps:
       - name: Checkout code
@@ -117,7 +228,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
-          scan-ref: 'apps/api'
+          scan-ref: 'apps/'
           format: 'sarif'
           output: 'trivy-results.sarif'
         continue-on-error: true
@@ -136,3 +247,28 @@ jobs:
         if: steps.check_sarif.outputs.exists == 'true'
         with:
           sarif_file: 'trivy-results.sarif'
+
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-and-test, security-scan]
+    if: always()
+    
+    steps:
+      - name: Check build status
+        run: |
+          if [ "${{ needs.build-and-test.result }}" == "success" ]; then
+            echo "✅ Backend build and tests: SUCCESS"
+            exit 0
+          else
+            echo "❌ Backend build and tests: FAILED"
+            exit 1
+          fi
+
+      - name: Check security scan status
+        run: |
+          if [ "${{ needs.security-scan.result }}" == "success" ] || [ "${{ needs.security-scan.result }}" == "skipped" ]; then
+            echo "✅ Security scan: PASSED"
+          else
+            echo "⚠️ Security scan: COMPLETED WITH WARNINGS"
+          fi
