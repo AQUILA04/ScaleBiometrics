@@ -6,19 +6,15 @@ FROM maven:3.9-eclipse-temurin-21-alpine AS build
 
 WORKDIR /build
 
-# Step 1: Copy POMs first to leverage Docker layer caching for dependencies
+# Step 1: Copy POMs and complete module directories
 COPY pom.xml .
-COPY packages/biometric-core/pom.xml packages/biometric-core/
-COPY apps/api/pom.xml apps/api/
+COPY packages packages
+COPY apps/api apps/api
 
 # Step 2: Download dependencies (this layer will be cached)
 RUN mvn dependency:go-offline -B -pl apps/api -am
 
-# Step 3: Copy source code
-COPY packages/biometric-core/src packages/biometric-core/src
-COPY apps/api/src apps/api/src
-
-# Step 4: Build the API module
+# Step 3: Build the API module
 RUN mvn clean package -DskipTests -B -pl apps/api -am
 
 # Stage 2: Runtime
