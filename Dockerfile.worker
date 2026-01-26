@@ -1,10 +1,12 @@
 # Multi-stage build for ScaleBiometrics Worker
 
-# Stage 1: Build
-FROM maven:3.9-eclipse-temurin-21-alpine AS build
+# Stage 1: Build (using Debian-based image for better tool support)
+FROM maven:3.9-eclipse-temurin-21 AS build
 
 # Install protobuf compiler (required for gRPC code generation)
-RUN apk add --no-cache protobuf-compiler
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
@@ -16,7 +18,7 @@ COPY apps apps
 # Build the Worker module with all dependencies
 RUN mvn clean package -DskipTests -B -pl apps/worker -am
 
-# Stage 2: Runtime
+# Stage 2: Runtime (lightweight Alpine image)
 FROM eclipse-temurin:21-jre-alpine
 
 LABEL maintainer="ScaleBiometrics Team"
