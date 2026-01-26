@@ -1,14 +1,24 @@
 # Multi-stage build for ScaleBiometrics API
+# Optimized with Maven dependency caching
 
 # Stage 1: Build
 FROM maven:3.9-eclipse-temurin-21-alpine AS build
 
 WORKDIR /build
 
-# Copy the entire project structure
-COPY . .
+# Step 1: Copy POMs first to leverage Docker layer caching for dependencies
+COPY pom.xml .
+COPY packages/biometric-core/pom.xml packages/biometric-core/
+COPY apps/api/pom.xml apps/api/
 
-# Build the API module with all dependencies
+# Step 2: Download dependencies (this layer will be cached)
+RUN mvn dependency:go-offline -B -pl apps/api -am
+
+# Step 3: Copy source code
+COPY packages/biometric-core/src packages/biometric-core/src
+COPY apps/api/src apps/api/src
+
+# Step 4: Build the API module
 RUN mvn clean package -DskipTests -B -pl apps/api -am
 
 # Stage 2: Runtime
