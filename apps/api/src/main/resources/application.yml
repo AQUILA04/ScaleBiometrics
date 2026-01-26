@@ -83,8 +83,11 @@ grpc:
   server:
     port: ${GRPC_PORT:9090}
   client:
+    master:
+      address: ${MASTER_ADDRESS:static://localhost:9091}
+      negotiation-type: plaintext
     worker:
-      address: ${WORKER_ADDRESS:static://localhost:9091}
+      address: ${WORKER_ADDRESS:static://localhost:9092}
       negotiation-type: plaintext
 
 # Application Configuration
@@ -95,9 +98,21 @@ app:
   matching:
     threshold: ${MATCHING_THRESHOLD:40}
     max-workers: ${MAX_WORKERS:4}
+    top-k: ${MATCHING_TOP_K:10}
+    hnsw:
+      enabled: true
+      m: ${HNSW_M:16}
+      ef-construction: ${HNSW_EF_CONSTRUCTION:200}
+      ef-search: ${HNSW_EF_SEARCH:100}
   fingerprint:
     max-count: 10
     min-quality: 20
+  offheap:
+    enabled: true
+    max-size-gb: ${OFFHEAP_MAX_SIZE_GB:8}
+  performance:
+    target-latency-ms: 2000
+    p95-threshold-ms: 2000
 
 # Actuator
 management:
@@ -115,6 +130,9 @@ management:
   tracing:
     sampling:
       probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
 
 # Logging
 logging:
@@ -122,5 +140,5 @@ logging:
     root: INFO
     com.scalebiometrics: DEBUG
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [%X{trace_id}] - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [%X{trace_id}] - %msg%n"

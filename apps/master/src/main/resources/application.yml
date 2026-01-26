@@ -1,0 +1,159 @@
+spring:
+  application:
+    name: scalebiometrics-master
+  
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:scalebiometrics}
+    username: ${DB_USER:scalebiometrics}
+    password: ${DB_PASSWORD:scalebiometrics_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 3
+      connection-timeout: 30000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+  
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: scalebiometrics-master
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/scalebiometrics}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/scalebiometrics/protocol/openid-connect/certs}
+
+server:
+  port: ${SERVER_PORT:8082}
+  servlet:
+    context-path: /api
+
+# gRPC Configuration
+grpc:
+  server:
+    port: ${GRPC_PORT:9091}
+    enable-keep-alive: true
+    keep-alive-time: 30s
+    keep-alive-timeout: 10s
+  client:
+    worker:
+      address: ${WORKER_ADDRESS:static://localhost:9092}
+      negotiation-type: plaintext
+
+# Master Orchestrator Configuration
+master:
+  # Leader Election
+  leader-election:
+    enabled: true
+    lease-duration-ms: 30000
+    renew-deadline-ms: 20000
+  
+  # Scatter-Gather Configuration
+  scatter-gather:
+    timeout-ms: ${SCATTER_GATHER_TIMEOUT_MS:1500}
+    max-parallel-requests: ${MAX_PARALLEL_REQUESTS:100}
+  
+  # Circuit Breaker Configuration
+  circuit-breaker:
+    enabled: true
+    failure-threshold: 5
+    success-threshold: 2
+    timeout-ms: 60000
+  
+  # Health Monitoring Configuration
+  health-monitoring:
+    enabled: true
+    check-interval-ms: 10000
+    heartbeat-timeout-ms: 30000
+    consecutive-failures-threshold: 3
+  
+  # Failover Configuration
+  failover:
+    enabled: true
+    max-recovery-attempts: 3
+    initial-recovery-delay-ms: 5000
+  
+  # Request Routing Configuration
+  routing:
+    strategy: ${ROUTING_STRATEGY:HASH}  # HASH, ROUND_ROBIN, LEAST_LOADED
+    replication-factor: ${REPLICATION_FACTOR:1}
+  
+  # Load Balancing Configuration
+  load-balancing:
+    enabled: true
+    overload-threshold: 1000
+    slow-response-threshold-ms: 500
+  
+  # Request Deduplication Configuration
+  deduplication:
+    enabled: true
+    ttl-seconds: 300
+  
+  # Cache Configuration
+  cache:
+    enabled: true
+    ttl-seconds: 3600
+    max-size: 10000
+  
+  # Worker Discovery
+  worker-discovery:
+    enabled: true
+    refresh-interval-ms: 30000
+
+# Kafka Topics Configuration
+kafka:
+  topics:
+    matching-requests: matching-requests
+    matching-results: matching-results
+    template-updates: template-updates
+    worker-heartbeat: worker-heartbeat
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.scalebiometrics: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [%X{trace_id}] - %msg%n"

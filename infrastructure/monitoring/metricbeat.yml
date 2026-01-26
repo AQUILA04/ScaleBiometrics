@@ -1,0 +1,100 @@
+metricbeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: true
+  reload.period: 10s
+
+metricbeat.modules:
+  # System metrics
+  - module: system
+    period: 10s
+    metricsets:
+      - cpu
+      - load
+      - memory
+      - network
+      - process
+      - process_summary
+      - uptime
+      - socket_summary
+      - entropy
+
+  # Docker metrics
+  - module: docker
+    period: 10s
+    hosts: ["unix:///var/run/docker.sock"]
+    metricsets:
+      - container
+      - cpu
+      - diskio
+      - event
+      - healthcheck
+      - info
+      - memory
+      - network
+
+  # Prometheus metrics
+  - module: prometheus
+    period: 10s
+    hosts: ["localhost:9090"]
+    metrics_path: /metrics
+    namespace: prometheus
+
+  # Elasticsearch metrics
+  - module: elasticsearch
+    period: 10s
+    hosts: ["elasticsearch:9200"]
+    metricsets:
+      - node
+      - node_stats
+      - indices
+      - index
+
+  # Kafka metrics
+  - module: kafka
+    period: 10s
+    hosts: ["kafka:9092"]
+    metricsets:
+      - broker
+      - consumer_group
+      - partition
+
+  # PostgreSQL metrics
+  - module: postgresql
+    period: 10s
+    hosts: ["postgres:5432"]
+    username: postgres
+    password: postgres
+    metricsets:
+      - database
+      - bgwriter
+      - activity
+
+  # Redis metrics
+  - module: redis
+    period: 10s
+    hosts: ["redis:6379"]
+    metricsets:
+      - info
+      - keyspace
+
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+  - add_kubernetes_metadata: ~
+  - drop_event:
+      when:
+        regexp:
+          message: "^DBG"
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "metricbeat-%{[agent.version]}-%{+yyyy.MM.dd}"
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/metricbeat
+  name: metricbeat
+  keepfiles: 7
+  permissions: 0644

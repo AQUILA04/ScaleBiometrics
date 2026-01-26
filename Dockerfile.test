@@ -1,0 +1,28 @@
+# Multi-stage build for testing
+FROM maven:3.9.6-eclipse-temurin-21 AS builder
+
+WORKDIR /app
+
+# Copy the entire project
+COPY . .
+
+# Build and run tests
+RUN mvn clean test -DskipIntegrationTests=false -X
+
+# Generate coverage report
+RUN mvn jacoco:report
+
+# Final stage - minimal image with test results
+FROM eclipse-temurin:21-jdk
+
+WORKDIR /app
+
+COPY --from=builder /app/target /app/target
+COPY --from=builder /app/apps/*/target /app/apps/target
+COPY --from=builder /app/packages/*/target /app/packages/target
+
+# Copy test reports
+COPY --from=builder /app/apps/*/target/site/jacoco /app/coverage
+
+# Print test results
+CMD ["sh", "-c", "echo '=== TEST EXECUTION COMPLETE ===' && find /app -name 'TEST-*.xml' -exec echo {} \\; && find /app -name 'jacoco.xml' -exec echo {} \\;"]

@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      # Jaeger UI
+      - "16686:16686"
+      # Jaeger API
+      - "16687:16687"
+      # Jaeger gRPC receiver
+      - "14250:14250"
+      # Jaeger HTTP receiver
+      - "14268:14268"
+      # Jaeger Zipkin receiver
+      - "9411:9411"
+      # Jaeger Compact Thrift
+      - "6831:6831/udp"
+      # Jaeger Binary Thrift
+      - "6832:6832/udp"
+    environment:
+      # Collector configuration
+      COLLECTOR_OTLP_ENABLED: "true"
+      COLLECTOR_GRPC_HOST_PORT: "0.0.0.0:14250"
+      COLLECTOR_HTTP_HOST_PORT: "0.0.0.0:14268"
+      
+      # Storage configuration (memory for testing)
+      MEMORY_MAX_TRACES: 10000
+      
+      # Sampling strategy
+      SAMPLING_STRATEGIES_FILE: /etc/jaeger/sampling_strategies.json
+      
+      # Query configuration
+      QUERY_BASE_PATH: /jaeger
+    volumes:
+      - ./sampling_strategies.json:/etc/jaeger/sampling_strategies.json
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Elasticsearch for Jaeger storage (optional, for production)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.5.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  elasticsearch_data:
+
+networks:
+  monitoring:
+    driver: bridge
