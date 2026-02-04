@@ -1,6 +1,6 @@
 # Custom Keycloak with ScaleBiometrics theme and configuration
 
-FROM quay.io/keycloak/keycloak:23.0 AS builder
+FROM quay.io/keycloak/keycloak:26.1 AS builder
 
 # Enable health and metrics
 ENV KC_HEALTH_ENABLED=true
@@ -12,7 +12,7 @@ ENV KC_DB=postgres
 # Build optimized Keycloak
 RUN /opt/keycloak/bin/kc.sh build
 
-FROM quay.io/keycloak/keycloak:23.0
+FROM quay.io/keycloak/keycloak:26.1
 
 LABEL maintainer="ScaleBiometrics Team"
 LABEL description="Custom Keycloak for ScaleBiometrics with automated realm configuration"
