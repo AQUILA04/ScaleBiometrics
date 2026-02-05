@@ -15,6 +15,9 @@ COPY pom.xml .
 COPY packages packages
 COPY apps apps
 
+# Configure Maven to ignore SSL errors via MAVEN_OPTS
+ENV MAVEN_OPTS="-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true"
+
 # Build the API module with all dependencies
 RUN mvn clean package -DskipTests -B -pl apps/api -am
 

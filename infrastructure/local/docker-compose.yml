@@ -79,10 +79,10 @@ services:
     image: minio/minio:latest
     container_name: scalebiometrics-minio
     restart: unless-stopped
-    command: server /data --console-address ":9001"
+    command: server /data --console-address ":29001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "29000:29000"
+      - "29001:29001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -91,7 +91,7 @@ services:
     networks:
       - scalebiometrics-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:29000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -220,8 +220,8 @@ services:
   # API Gateway (Backend)
   api:
     build:
-      context: ../../apps/api
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: Dockerfile.api
     container_name: scalebiometrics-api
     restart: unless-stopped
     ports:

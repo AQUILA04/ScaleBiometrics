@@ -3,6 +3,7 @@ package com.scalebiometrics.master.routing;
 import com.scalebiometrics.core.exception.BiometricException;
 import com.scalebiometrics.master.grpc.WorkerClient;
 import com.scalebiometrics.master.grpc.WorkerPool;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -46,7 +47,13 @@ public class RequestRouter {
     /**
      * Initialize routing strategy
      */
+    @PostConstruct
     public void initialize() {
+        if (routingStrategyStr == null) {
+            log.warn("Routing strategy string is null, defaulting to HASH");
+            this.routingStrategy = RoutingStrategy.HASH;
+            return;
+        }
         try {
             this.routingStrategy = RoutingStrategy.valueOf(routingStrategyStr.toUpperCase());
             log.info("Initialized request router with strategy: {}", routingStrategy);

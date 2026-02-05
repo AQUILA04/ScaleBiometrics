@@ -8,7 +8,7 @@ spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:sbio}
     username: ${DB_USER:francis}
-    password: ${DB_PASSWORD:Afrcia2025}
+    password: ${DB_PASSWORD:Africa2025}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
@@ -73,7 +73,7 @@ server:
 
 # MinIO Configuration
 minio:
-  url: ${MINIO_URL:http://localhost:9000}
+  url: ${MINIO_URL:http://localhost:29000}
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
   bucket-name: ${MINIO_BUCKET:biometric-images}
@@ -87,7 +87,7 @@ grpc:
       address: ${MASTER_ADDRESS:static://localhost:9091}
       negotiation-type: plaintext
     worker:
-      address: ${WORKER_ADDRESS:static://localhost:9092}
+      address: ${WORKER_ADDRESS:static://localhost:29092}
       negotiation-type: plaintext
 
 # Application Configuration
@@ -123,16 +123,16 @@ management:
   endpoint:
     health:
       show-details: when-authorized
-  metrics:
-    export:
-      prometheus:
-        enabled: true
   tracing:
     sampling:
       probability: 1.0
   otlp:
     tracing:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 # Logging
 logging:

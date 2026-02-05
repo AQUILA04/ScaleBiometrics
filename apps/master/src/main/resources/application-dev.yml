@@ -59,7 +59,7 @@ grpc:
     keep-alive-timeout: 10s
   client:
     worker:
-      address: ${WORKER_ADDRESS:static://localhost:9092}
+      address: ${WORKER_ADDRESS:static://localhost:9093}
       negotiation-type: plaintext
 
 # Master Orchestrator Configuration

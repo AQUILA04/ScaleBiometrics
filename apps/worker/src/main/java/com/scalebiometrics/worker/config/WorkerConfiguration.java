@@ -19,61 +19,57 @@ import java.io.IOException;
 @Configuration
 public class WorkerConfiguration {
 
-    @Value("${grpc.server.port:9092}")
+    @Value("${grpc.server.port:39092}")
     private int grpcPort;
 
     /**
      * Initialize HNSW Index Manager
      */
-    @Bean
-    public HNSWIndexManager hnswIndexManager() throws Exception {
-        HNSWIndexManager manager = new HNSWIndexManager();
-        manager.initialize();
-        return manager;
-    }
+//    @Bean(initMethod = "initialize")
+//    public HNSWIndexManager hnswIndexManager() {
+//        return new HNSWIndexManager();
+//    }
 
     /**
      * Initialize Off-Heap Memory Manager
      */
-    @Bean
-    public OffHeapMemoryManager offHeapMemoryManager() throws Exception {
-        OffHeapMemoryManager manager = new OffHeapMemoryManager();
-        manager.initialize();
-        return manager;
-    }
+//    @Bean(initMethod = "initialize")
+//    public OffHeapMemoryManager offHeapMemoryManager() {
+//        return new OffHeapMemoryManager();
+//    }
 
     /**
      * Initialize SourceAFIS Matcher
      */
-    @Bean
-    public SourceAFISMatcher sourceAFISMatcher() {
-        return new SourceAFISMatcher();
-    }
+//    @Bean
+//    public SourceAFISMatcher sourceAFISMatcher() {
+//        return new SourceAFISMatcher();
+//    }
 
     /**
      * Initialize Matching Metrics
      */
-    @Bean
-    public MatchingMetrics matchingMetrics(MeterRegistry meterRegistry) {
-        return new MatchingMetrics(meterRegistry);
-    }
+//    @Bean
+//    public MatchingMetrics matchingMetrics(MeterRegistry meterRegistry) {
+//        return new MatchingMetrics(meterRegistry);
+//    }
 
     /**
      * Initialize Hybrid Matching Engine
      */
-    @Bean
-    public HybridMatchingEngine hybridMatchingEngine(
-            HNSWIndexManager hnswIndexManager,
-            SourceAFISMatcher sourceAFISMatcher,
-            OffHeapMemoryManager offHeapMemoryManager,
-            MatchingMetrics matchingMetrics) {
-        return new HybridMatchingEngine(
-                hnswIndexManager,
-                sourceAFISMatcher,
-                offHeapMemoryManager,
-                matchingMetrics
-        );
-    }
+//    @Bean
+//    public HybridMatchingEngine hybridMatchingEngine(
+//            HNSWIndexManager hnswIndexManager,
+//            SourceAFISMatcher sourceAFISMatcher,
+//            OffHeapMemoryManager offHeapMemoryManager,
+//            MatchingMetrics matchingMetrics) {
+//        return new HybridMatchingEngine(
+//                hnswIndexManager,
+//                sourceAFISMatcher,
+//                offHeapMemoryManager,
+//                matchingMetrics
+//        );
+//    }
 
     /**
      * Initialize gRPC Server
@@ -99,8 +95,8 @@ public class WorkerConfiguration {
     /**
      * Initialize gRPC Matcher Service
      */
-    @Bean
-    public MatcherServiceImpl matcherService(HybridMatchingEngine matchingEngine, MatchingMetrics matchingMetrics) {
-        return new MatcherServiceImpl(matchingEngine, matchingMetrics);
-    }
+//    @Bean
+//    public MatcherServiceImpl matcherService(HybridMatchingEngine matchingEngine, MatchingMetrics matchingMetrics) {
+//        return new MatcherServiceImpl(matchingEngine, matchingMetrics);
+//    }
 }

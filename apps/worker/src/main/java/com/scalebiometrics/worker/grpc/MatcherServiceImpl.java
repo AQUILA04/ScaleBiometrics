@@ -3,6 +3,8 @@ package com.scalebiometrics.worker.grpc;
 import com.scalebiometrics.core.domain.Fingerprint;
 import com.scalebiometrics.core.domain.MatchResult;
 import com.scalebiometrics.proto.matcher.*;
+import com.scalebiometrics.proto.matcher.MatchResponse;
+import com.scalebiometrics.proto.matcher.MatcherServiceGrpc;
 import com.scalebiometrics.worker.engine.HybridMatchingEngine;
 import com.scalebiometrics.worker.engine.MatchingMetrics;
 import io.grpc.stub.StreamObserver;
@@ -43,6 +45,7 @@ public class MatcherServiceImpl extends MatcherServiceGrpc.MatcherServiceImplBas
 
             // Convert gRPC request to domain object
             Fingerprint probeFingerprint = convertToFingerprint(request.getProbeTemplate());
+            probeFingerprint.setRid(request.getProbeRid());
 
             // Perform matching
             MatchResult matchResult = matchingEngine.match1N(
@@ -85,7 +88,10 @@ public class MatcherServiceImpl extends MatcherServiceGrpc.MatcherServiceImplBas
 
             // Convert gRPC request to domain objects
             Fingerprint probeFingerprint = convertToFingerprint(request.getProbeTemplate());
+            probeFingerprint.setRid(request.getProbeRid());
+            
             Fingerprint targetFingerprint = convertToFingerprint(request.getTargetTemplate());
+            targetFingerprint.setRid(request.getTargetRid());
 
             // Perform matching
             MatchResult matchResult = matchingEngine.match1To1(probeFingerprint, targetFingerprint);
@@ -196,9 +202,9 @@ public class MatcherServiceImpl extends MatcherServiceGrpc.MatcherServiceImplBas
                 candidates.add(Candidate.newBuilder()
                         .setTargetRid(candidate.getTargetRid())
                         .setHnnScore(candidate.getHnnScore())
-                        .setExactScore(candidate.getExactScore())
-                        .setFinalScore(candidate.getFinalScore())
-                        .setIsMatch(candidate.isMatch())
+                        .setExactScore(candidate.getScore())
+                        .setFinalScore(candidate.getScore())
+                        .setIsMatch(candidate.getScore() >= 40) // Assuming 40 is threshold
                         .build());
             }
         }
@@ -215,10 +221,18 @@ public class MatcherServiceImpl extends MatcherServiceGrpc.MatcherServiceImplBas
      * Convert domain MatchResult to gRPC VerificationResponse
      */
     private VerificationResponse convertToVerificationResponse(MatchResult matchResult, String traceId) {
+        int score = 0;
+        boolean isMatch = false;
+        
+        if (matchResult.getCandidates() != null && !matchResult.getCandidates().isEmpty()) {
+            score = matchResult.getCandidates().get(0).getScore();
+            isMatch = score >= 40; // Assuming 40 is threshold
+        }
+
         return VerificationResponse.newBuilder()
                 .setTraceId(traceId)
-                .setIsMatch(matchResult.isMatch())
-                .setScore(matchResult.getScore())
+                .setIsMatch(isMatch)
+                .setScore(score)
                 .setMatchingTimeMs(matchResult.getMatchingTimeMs())
                 .build();
     }

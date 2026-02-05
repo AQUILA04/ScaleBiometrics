@@ -53,7 +53,7 @@ server:
 # gRPC Configuration
 grpc:
   server:
-    port: ${GRPC_PORT:9092}
+    port: ${GRPC_PORT:9093}
     enable-keep-alive: true
     keep-alive-time: 30s
     keep-alive-timeout: 10s

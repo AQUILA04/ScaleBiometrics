@@ -76,6 +76,9 @@ public class HNSWIndexManager {
                     m, efConstruction, efSearch);
 
             // Create index directory if not exists
+            if (indexPath == null) {
+                indexPath = "/tmp/hnsw-index";
+            }
             Path indexDir = Paths.get(indexPath);
             Files.createDirectories(indexDir);
 
