@@ -59,7 +59,7 @@ grpc:
     keep-alive-timeout: 10s
   client:
     worker:
-      address: ${WORKER_ADDRESS:static://localhost:9092}
+      address: ${WORKER_ADDRESS:static://localhost:39092}
       negotiation-type: plaintext
 
 # Master Orchestrator Configuration
@@ -139,16 +139,16 @@ management:
   endpoint:
     health:
       show-details: always
-  metrics:
-    export:
-      prometheus:
-        enabled: true
   tracing:
     sampling:
       probability: 1.0
   otlp:
     tracing:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 # Logging
 logging:

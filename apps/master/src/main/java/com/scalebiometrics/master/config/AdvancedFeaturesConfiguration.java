@@ -23,9 +23,7 @@ public class AdvancedFeaturesConfiguration {
      */
     @Bean
     public RequestRouter requestRouter(WorkerPool workerPool) {
-        RequestRouter router = new RequestRouter(workerPool);
-        router.initialize();
-        return router;
+        return new RequestRouter(workerPool);
     }
 
     /**

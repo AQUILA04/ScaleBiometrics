@@ -87,7 +87,7 @@ grpc:
       address: ${MASTER_ADDRESS:static://localhost:9091}
       negotiation-type: plaintext
     worker:
-      address: ${WORKER_ADDRESS:static://localhost:9092}
+      address: ${WORKER_ADDRESS:static://localhost:39092}
       negotiation-type: plaintext
 
 # Application Configuration
