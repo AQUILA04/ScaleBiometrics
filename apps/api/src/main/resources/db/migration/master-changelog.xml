@@ -10,5 +10,6 @@
     <include file="db/migration/V003__create_functions.sql"/>
     <include file="db/migration/V004__add_observability_tables.sql"/>
     <include file="db/migration/V005__add_async_matching_tables.sql"/>
+    <include file="db/migration/V006__add_match_request_fingerprints.sql"/>
 
 </databaseChangeLog>

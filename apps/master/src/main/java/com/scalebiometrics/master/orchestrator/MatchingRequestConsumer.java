@@ -11,6 +11,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -61,23 +62,48 @@ public class MatchingRequestConsumer {
     }
 
     private Object processMatch1N(AsyncMatchRequestEvent event) throws Exception {
-        // Convert payload map to DTO (since it comes as LinkedHashMap from JSON)
-        MatchRequestDto dto = objectMapper.convertValue(event.getPayload(), MatchRequestDto.class);
-        
-        Fingerprint probe = new Fingerprint();
-        probe.setRid(dto.getProbeRid());
-        if (dto.getProbeTemplate() != null) {
-            probe.setTemplate(dto.getProbeTemplate());
+        List<byte[]> templates = event.getTemplates();
+        if (templates == null || templates.isEmpty()) {
+            throw new IllegalArgumentException("No templates provided for matching");
+        }
+
+        log.info("Processing {} templates for probeRid: {}", templates.size(), event.getProbeRid());
+
+        MatchResult finalResult = null;
+
+        // Stop-on-Match Logic
+        for (int i = 0; i < templates.size(); i++) {
+            byte[] template = templates.get(i);
+            
+            Fingerprint probe = new Fingerprint();
+            probe.setRid(event.getProbeRid());
+            probe.setTemplate(template);
+            
+            MatchResult result = orchestrator.match1N(probe, event.getTopK());
+            
+            if (result.getStatus() == MatchResult.MatchStatus.MATCH_FOUND) {
+                log.info("Match FOUND for finger index {}. Stopping search.", i);
+                finalResult = result;
+                break; // Stop processing other fingers
+            }
+            
+            // Keep the last result if no match found yet
+            finalResult = result;
+        }
+
+        if (finalResult != null && finalResult.getStatus() == MatchResult.MatchStatus.NO_MATCH) {
+            log.info("No match found for any of the {} fingerprints. Proceeding to enrollment (if configured).", templates.size());
+            // TODO: Trigger enrollment logic here (distribute templates to workers)
+            // For now, we just return NO_MATCH
         }
         
-        MatchResult result = orchestrator.match1N(probe, dto.getTopK());
-        
         // Map domain result to DTO
-        return mapToResponseDto(result, event.getTraceId());
+        return mapToResponseDto(finalResult, event.getTraceId());
     }
 
     private MatchResponseDto mapToResponseDto(MatchResult result, String traceId) {
-        // Simple mapping logic
+        if (result == null) return null;
+        
         return MatchResponseDto.builder()
                 .traceId(traceId)
                 .status(result.getStatus().name())
@@ -95,6 +121,9 @@ public class MatchingRequestConsumer {
         private String tenantId;
         private String traceId;
         private String type;
+        private String probeRid;
+        private List<byte[]> templates;
+        private int topK;
         private Object payload;
     }
 
@@ -105,15 +134,6 @@ public class MatchingRequestConsumer {
         private UUID requestId;
         private Object result;
         private String error;
-    }
-    
-    @lombok.Data
-    @lombok.NoArgsConstructor
-    @lombok.AllArgsConstructor
-    public static class MatchRequestDto {
-        private String probeRid;
-        private byte[] probeTemplate;
-        private int topK;
     }
     
     @lombok.Data
