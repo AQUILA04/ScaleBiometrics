@@ -27,7 +27,7 @@ public class FingerprintService {
     @Value("${minio.bucket-name}")
     private String bucketName;
 
-    public Fingerprint uploadFingerprint(String rid, int fingerIndex, MultipartFile file) {
+    public Fingerprint uploadFingerprint(String rid, Fingerprint.FingerIndex fingerIndex, MultipartFile file) {
         UUID fingerprintId = UUID.randomUUID();
         String objectName = rid + "/" + fingerIndex + "_" + fingerprintId + ".iso";
 
@@ -49,7 +49,7 @@ public class FingerprintService {
                     .id(fingerprintId)
                     .rid(rid)
                     .fingerIndex(fingerIndex)
-                    .storagePath(objectName)
+                    .imageUrl(objectName)
                     .createdAt(LocalDateTime.now())
                     // Template and embedding will be processed by Worker
                     .build();

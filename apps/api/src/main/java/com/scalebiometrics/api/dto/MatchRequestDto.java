@@ -23,4 +23,6 @@ public class MatchRequestDto {
     
     // Métadonnées optionnelles (ex: nom, prénom pour l'enrôlement)
     private String metadata;
+    private byte[] probeTemplate;
+    private float[] probeEmbedding;
 }

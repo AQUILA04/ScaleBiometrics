@@ -17,7 +17,7 @@ public class FingerprintController {
     @PostMapping
     public ResponseEntity<Fingerprint> uploadFingerprint(
             @RequestParam("rid") String rid,
-            @RequestParam("fingerIndex") int fingerIndex,
+            @RequestParam("fingerIndex") Fingerprint.FingerIndex fingerIndex,
             @RequestParam("file") MultipartFile file) {
         
         Fingerprint fingerprint = fingerprintService.uploadFingerprint(rid, fingerIndex, file);

@@ -26,7 +26,7 @@ public class MatchingService {
                 .setTraceId(traceId)
                 .setProbeRid(requestDto.getProbeRid())
                 .setTopK(requestDto.getTopK())
-                .setThreshold(requestDto.getThreshold())
+                .setThreshold((int) requestDto.getThreshold())
                 .setTimeoutMs(2000); // Default timeout
 
         if (requestDto.getProbeTemplate() != null) {
