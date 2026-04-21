@@ -6,13 +6,13 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Install pnpm
-RUN npm install -g pnpm@8
+RUN npm install -g pnpm@10
 
 # Copy package.json and lockfile
 COPY package.json pnpm-lock.yaml ./
 
 # Install dependencies
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # Stage 2: Build
 FROM node:20-alpine AS builder
@@ -20,7 +20,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install pnpm
-RUN npm install -g pnpm@8
+RUN npm install -g pnpm@10
 
 # Copy dependencies from previous stage
 COPY --from=deps /app/node_modules ./node_modules
