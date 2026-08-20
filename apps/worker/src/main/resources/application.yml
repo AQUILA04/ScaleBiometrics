@@ -5,6 +5,23 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   
+  cloud:
+    consul:
+      host: ${CONSUL_HOST:localhost}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        enabled: true
+        register: true
+        instance-id: ${spring.application.name}-${worker.id}
+        service-name: biometric-worker
+        port: ${grpc.server.port:9093}
+        health-check-path: /api/actuator/health
+        health-check-interval: 10s
+        metadata:
+          workerId: ${worker.id}
+          shardId: ${worker.shard-id}
+          grpcPort: ${grpc.server.port:9093}
+  
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:scalebiometrics}
     username: ${DB_USER:scalebiometrics}
