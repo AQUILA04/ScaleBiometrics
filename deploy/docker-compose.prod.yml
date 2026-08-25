@@ -1,0 +1,179 @@
+# PROD stack — BioEngine (slug scalebio) — project name: scalebio-prod
+# Hosts:
+#   scalebio.optimizesolux.com     → web (SPA; landing owns Path(`/`))
+#   scalebio-api.optimizesolux.com → api :8081
+# Auth (shared common-infra):
+#   auth.optimizesolux.com/realms/scalebio
+#
+# Prerequisite: optimize-common-infra (redis, kafka profile, minio, keycloak)
+#               + shared-traefik on traefik-public.
+# Start:
+#   docker compose -f docker-compose.prod.yml --project-name scalebio-prod \
+#     --env-file /opt/scalebio/prod/.env up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-scalebio}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-scalebio}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-scalebio} -d ${DB_NAME:-scalebio} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      optimizesolux-common:
+        aliases: ["scalebio-db"]
+
+  api:
+    image: ${API_IMAGE:?API_IMAGE is required}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: "8081"
+      GRPC_PORT: "9090"
+      DB_HOST: scalebio-db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-scalebio}
+      DB_USER: ${DB_USER:-scalebio}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DATABASE: ${REDIS_DATABASE:-8}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KEYCLOAK_ISSUER_URI: ${OIDC_ISSUER_URI:-https://auth.optimizesolux.com/realms/scalebio}
+      KEYCLOAK_JWK_SET_URI: ${OIDC_JWK_URI:-https://auth.optimizesolux.com/realms/scalebio/protocol/openid-connect/certs}
+      MINIO_URL: ${MINIO_URL:-http://minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
+      MINIO_BUCKET: ${MINIO_BUCKET:-biometric-images}
+      MASTER_ADDRESS: ${MASTER_ADDRESS:-static://master:9091}
+      OTEL_SERVICE_NAME: scalebio-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+    networks:
+      - optimizesolux-common
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.scalebio-prod-api.rule=Host(`${API_HOSTNAME:-scalebio-api.optimizesolux.com}`)"
+      - "traefik.http.routers.scalebio-prod-api.entrypoints=websecure"
+      - "traefik.http.routers.scalebio-prod-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.scalebio-prod-api.loadbalancer.server.port=8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  master:
+    image: ${MASTER_IMAGE:?MASTER_IMAGE is required}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      GRPC_PORT: "9091"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DATABASE: ${REDIS_DATABASE:-8}
+      WORKER_ADDRESS: ${WORKER_ADDRESS:-static://worker:9093}
+      OTEL_SERVICE_NAME: scalebio-master
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+    networks:
+      optimizesolux-common:
+        aliases: ["master", "scalebio-master"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8082/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  worker:
+    image: ${WORKER_IMAGE:?WORKER_IMAGE is required}
+    restart: unless-stopped
+    depends_on:
+      - master
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      GRPC_PORT: "9093"
+      WORKER_ID: ${WORKER_ID:-worker-1}
+      WORKER_SHARD_ID: ${WORKER_SHARD_ID:-0}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DATABASE: ${REDIS_DATABASE:-8}
+      OTEL_SERVICE_NAME: scalebio-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+    networks:
+      optimizesolux-common:
+        aliases: ["worker", "scalebio-worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE is required}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      AUTH_URL: ${AUTH_URL:-https://scalebio.optimizesolux.com}
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-https://auth.optimizesolux.com}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-scalebio}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-scalebio-web}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+      API_BASE_URL: ${API_BASE_URL:-https://scalebio-api.optimizesolux.com/api}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://scalebio-api.optimizesolux.com/api}
+      NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-https://auth.optimizesolux.com}
+      NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-scalebio}
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID:-scalebio-web}
+    networks:
+      - optimizesolux-common
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.scalebio-prod-web.rule=Host(`${APP_HOSTNAME:-scalebio.optimizesolux.com}`)"
+      - "traefik.http.routers.scalebio-prod-web.entrypoints=websecure"
+      - "traefik.http.routers.scalebio-prod-web.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.scalebio-prod-web.priority=10"
+      - "traefik.http.services.scalebio-prod-web.loadbalancer.server.port=3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok||r.status===307||r.status===302?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+volumes:
+  postgres_data:
+
+networks:
+  optimizesolux-common:
+    external: true
+  traefik-public:
+    external: true

@@ -1,0 +1,29 @@
+# BioEngine marketing landing — Host via LANDING_HOST (default scalebio.optimizesolux.com)
+# Exact Path `/` keeps SPA routes free on the same host.
+# Requires shared Traefik + network traefik-public on the Contabo VPS.
+#
+# Deploy:
+#   docker compose --project-name scalebio-landing up -d --build
+
+services:
+  landing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: scalebio-landing:latest
+    container_name: scalebio-landing
+    restart: unless-stopped
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.scalebio-landing.rule=Host(`${LANDING_HOST:-scalebio.optimizesolux.com}`) && Path(`/`)"
+      - "traefik.http.routers.scalebio-landing.entrypoints=websecure"
+      - "traefik.http.routers.scalebio-landing.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.scalebio-landing.priority=100"
+      - "traefik.http.services.scalebio-landing.loadbalancer.server.port=80"
+
+networks:
+  traefik-public:
+    external: true
