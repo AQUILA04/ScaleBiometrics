@@ -55,3 +55,5 @@ docker-compose.override.yml
 *.tmp
 *.bak
 *.cache
+
+*-contabo-secrets.md

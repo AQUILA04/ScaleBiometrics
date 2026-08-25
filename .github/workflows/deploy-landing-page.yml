@@ -1,0 +1,109 @@
+name: Deploy BioEngine Landing Page
+
+# Builds & deploys landing-page/ to the Contabo VPS (shared Traefik).
+# Triggers only when files under landing-page/ change (or this workflow file).
+# Reuses the same GitHub secrets as .github/workflows/cd.yml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "landing-page/**"
+      - ".github/workflows/deploy-landing-page.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: scalebio-landing-prod
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build & deploy landing-page
+    runs-on: ubuntu-latest
+    environment: prod
+    defaults:
+      run:
+        working-directory: landing-page
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        env:
+          PROD_SERVER_HOST: ${{ secrets.PROD_SERVER_HOST }}
+          PROD_SERVER_USER: ${{ secrets.PROD_SERVER_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in PROD_SERVER_HOST PROD_SERVER_USER SSH_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.PROD_SERVER_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Sync landing-page to VPS
+        env:
+          SERVER_USER: ${{ secrets.PROD_SERVER_USER }}
+          SERVER_HOST: ${{ secrets.PROD_SERVER_HOST }}
+        run: |
+          set -euo pipefail
+          REMOTE="${SERVER_USER}@${SERVER_HOST}"
+          DEST="/opt/optimizesolux/scalebio-landing"
+
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "$REMOTE" \
+            "mkdir -p '$DEST' && (docker network inspect traefik-public >/dev/null 2>&1 || docker network create traefik-public)"
+
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'README.md' \
+            --exclude 'docs' \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+            ./ "$REMOTE:$DEST/"
+
+      - name: Build & restart container on VPS
+        env:
+          SERVER_USER: ${{ secrets.PROD_SERVER_USER }}
+          SERVER_HOST: ${{ secrets.PROD_SERVER_HOST }}
+          PROD_APP_HOSTNAME: ${{ secrets.PROD_APP_HOSTNAME }}
+        run: |
+          set -euo pipefail
+          REMOTE="${SERVER_USER}@${SERVER_HOST}"
+          DEST="/opt/optimizesolux/scalebio-landing"
+          HOST_NAME="${PROD_APP_HOSTNAME:-scalebio.optimizesolux.com}"
+          PROJECT="scalebio-landing"
+
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "$REMOTE" bash -s <<EOF
+          set -euo pipefail
+          cd '$DEST'
+          printf 'LANDING_HOST=%s\n' '$HOST_NAME' > .env
+          docker compose --project-name '$PROJECT' up -d --build
+          docker compose --project-name '$PROJECT' ps
+          docker inspect --format='{{.State.Health.Status}}' scalebio-landing || true
+          EOF
+
+      - name: Smoke check
+        continue-on-error: true
+        env:
+          PROD_APP_HOSTNAME: ${{ secrets.PROD_APP_HOSTNAME }}
+        run: |
+          set -euo pipefail
+          HOST_NAME="${PROD_APP_HOSTNAME:-scalebio.optimizesolux.com}"
+          echo "Checking https://${HOST_NAME}/ …"
+          curl -fsSIL --max-time 30 "https://${HOST_NAME}/" | head -n 20 || \
+            echo "::warning::Smoke check failed (DNS/TLS may still be propagating)."

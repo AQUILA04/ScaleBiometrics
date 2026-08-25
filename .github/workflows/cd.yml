@@ -1,0 +1,244 @@
+name: BioEngine CD Pipeline
+
+# CD Contabo (shared-traefik) :
+# - Docker Build success on release/** → deploy PROD
+# - workflow_dispatch (promote) → last published images from main/develop history
+
+on:
+  workflow_run:
+    workflows: ["Docker Build"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action to perform"
+        type: choice
+        required: true
+        default: promote
+        options:
+          - promote
+
+jobs:
+  resolve-images:
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'release/')) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      web_image: ${{ steps.resolve.outputs.web_image }}
+      api_image: ${{ steps.resolve.outputs.api_image }}
+      master_image: ${{ steps.resolve.outputs.master_image }}
+      worker_image: ${{ steps.resolve.outputs.worker_image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'develop' || github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Resolve last published image for each component
+        id: resolve
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && 'develop' || github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          OWNER_LOWER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          REGISTRY="ghcr.io"
+          PREFIX="$REGISTRY/$OWNER_LOWER/scalebiometrics"
+
+          echo "$GHCR_TOKEN" | docker login "$REGISTRY" -u "$GHCR_USERNAME" --password-stdin
+
+          git fetch origin develop --depth=200 2>/dev/null || true
+          git fetch origin main --depth=200 2>/dev/null || true
+
+          resolve_component() {
+            local component="$1"
+            local image="$PREFIX/$component"
+            local start_sha sha short
+
+            for start_sha in "$HEAD_SHA" "origin/develop" "develop" "origin/main" "main"; do
+              if ! git rev-parse --verify "${start_sha}^{commit}" >/dev/null 2>&1; then
+                continue
+              fi
+              echo "Searching $component image in history of $start_sha" >&2
+              while read -r sha; do
+                short="${sha:0:7}"
+                for tag in "sha-$sha" "sha-$short" "$sha" "$short"; do
+                  if docker manifest inspect "$image:$tag" > /dev/null 2>&1; then
+                    echo "Resolved $component: $image:$tag" >&2
+                    echo "$image:$tag"
+                    return 0
+                  fi
+                done
+              done < <(git log --format='%H' "$start_sha" | head -100)
+            done
+
+            echo "ERROR: No published image found for $component" >&2
+            return 1
+          }
+
+          WEB_IMAGE=$(resolve_component "web")
+          API_IMAGE=$(resolve_component "api")
+          MASTER_IMAGE=$(resolve_component "master")
+          WORKER_IMAGE=$(resolve_component "worker")
+
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "master_image=$MASTER_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "worker_image=$WORKER_IMAGE" >> "$GITHUB_OUTPUT"
+
+  deploy-prod:
+    needs: resolve-images
+    if: |
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'release/')
+    runs-on: ubuntu-latest
+    name: Deploy to PROD (release/**)
+    environment: prod
+    steps:
+      - name: Prepare SSH key
+        run: |
+          echo "$SSH_PRIVATE_KEY" > private_key
+          chmod 600 private_key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Bootstrap & Deploy to PROD server
+        env:
+          WEB_IMAGE: ${{ needs.resolve-images.outputs.web_image }}
+          API_IMAGE: ${{ needs.resolve-images.outputs.api_image }}
+          MASTER_IMAGE: ${{ needs.resolve-images.outputs.master_image }}
+          WORKER_IMAGE: ${{ needs.resolve-images.outputs.worker_image }}
+          SERVER_USER: ${{ secrets.PROD_SERVER_USER }}
+          SERVER_HOST: ${{ secrets.PROD_SERVER_HOST }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          DB_USER: ${{ secrets.DB_USER }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_DB_NAME: ${{ secrets.PROD_DB_NAME }}
+          PROD_APP_HOSTNAME: ${{ secrets.PROD_APP_HOSTNAME }}
+          PROD_API_HOSTNAME: ${{ secrets.PROD_API_HOSTNAME }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          REPO_RAW="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/deploy"
+
+          ssh -o StrictHostKeyChecking=no -i private_key "$SERVER_USER@$SERVER_HOST" bash << ENDSSH
+          set -euo pipefail
+          mkdir -p /opt/scalebio
+          curl -sSL "${REPO_RAW}/init.sh" -o /opt/scalebio/init.sh
+          chmod +x /opt/scalebio/init.sh
+          ENDSSH
+
+          INIT_ARGS=(
+            prod
+            "$WEB_IMAGE"
+            "$API_IMAGE"
+            "$MASTER_IMAGE"
+            "$WORKER_IMAGE"
+            --ghcr-username "$GHCR_USERNAME"
+            --ghcr-token "$GHCR_TOKEN"
+            --db-user "$DB_USER"
+            --db-password "$PROD_DB_PASSWORD"
+            --db-name "$PROD_DB_NAME"
+            --app-hostname-prod "$PROD_APP_HOSTNAME"
+            --api-hostname-prod "$PROD_API_HOSTNAME"
+            --oidc-issuer-uri "https://auth.optimizesolux.com/realms/scalebio"
+            --oidc-jwk-uri "https://auth.optimizesolux.com/realms/scalebio/protocol/openid-connect/certs"
+            --redis-database "8"
+            --auth-secret "$AUTH_SECRET"
+            --redis-password "${REDIS_PASSWORD:-}"
+            --minio-access-key "${MINIO_ACCESS_KEY:-}"
+            --minio-secret-key "${MINIO_SECRET_KEY:-}"
+            --github-repo "$GITHUB_REPOSITORY"
+          )
+
+          REMOTE_CMD="sudo /opt/scalebio/init.sh $(printf '%q ' "${INIT_ARGS[@]}")"
+          ssh -o StrictHostKeyChecking=no -i private_key "$SERVER_USER@$SERVER_HOST" "$REMOTE_CMD"
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f private_key
+
+  promote:
+    needs: resolve-images
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    name: Promote to PROD
+    environment: prod
+    steps:
+      - name: Prepare SSH key
+        run: |
+          echo "$SSH_PRIVATE_KEY" > private_key
+          chmod 600 private_key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Promote images to PROD
+        env:
+          WEB_IMAGE: ${{ needs.resolve-images.outputs.web_image }}
+          API_IMAGE: ${{ needs.resolve-images.outputs.api_image }}
+          MASTER_IMAGE: ${{ needs.resolve-images.outputs.master_image }}
+          WORKER_IMAGE: ${{ needs.resolve-images.outputs.worker_image }}
+          SERVER_USER: ${{ secrets.PROD_SERVER_USER }}
+          SERVER_HOST: ${{ secrets.PROD_SERVER_HOST }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          DB_USER: ${{ secrets.DB_USER }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_DB_NAME: ${{ secrets.PROD_DB_NAME }}
+          PROD_APP_HOSTNAME: ${{ secrets.PROD_APP_HOSTNAME }}
+          PROD_API_HOSTNAME: ${{ secrets.PROD_API_HOSTNAME }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          REPO_RAW="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/deploy"
+
+          ssh -o StrictHostKeyChecking=no -i private_key "$SERVER_USER@$SERVER_HOST" bash << ENDSSH
+          set -euo pipefail
+          mkdir -p /opt/scalebio
+          curl -sSL "${REPO_RAW}/init.sh" -o /opt/scalebio/init.sh
+          chmod +x /opt/scalebio/init.sh
+          ENDSSH
+
+          INIT_ARGS=(
+            prod
+            "$WEB_IMAGE"
+            "$API_IMAGE"
+            "$MASTER_IMAGE"
+            "$WORKER_IMAGE"
+            --ghcr-username "$GHCR_USERNAME"
+            --ghcr-token "$GHCR_TOKEN"
+            --db-user "$DB_USER"
+            --db-password "$PROD_DB_PASSWORD"
+            --db-name "$PROD_DB_NAME"
+            --app-hostname-prod "$PROD_APP_HOSTNAME"
+            --api-hostname-prod "$PROD_API_HOSTNAME"
+            --oidc-issuer-uri "https://auth.optimizesolux.com/realms/scalebio"
+            --oidc-jwk-uri "https://auth.optimizesolux.com/realms/scalebio/protocol/openid-connect/certs"
+            --redis-database "8"
+            --auth-secret "$AUTH_SECRET"
+            --redis-password "${REDIS_PASSWORD:-}"
+            --minio-access-key "${MINIO_ACCESS_KEY:-}"
+            --minio-secret-key "${MINIO_SECRET_KEY:-}"
+            --github-repo "$GITHUB_REPOSITORY"
+          )
+
+          REMOTE_CMD="sudo /opt/scalebio/init.sh $(printf '%q ' "${INIT_ARGS[@]}")"
+          ssh -o StrictHostKeyChecking=no -i private_key "$SERVER_USER@$SERVER_HOST" "$REMOTE_CMD"
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f private_key
