@@ -45,7 +45,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/web
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Lint
         working-directory: apps/web
@@ -89,7 +89,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/web
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Run npm audit
         working-directory: apps/web

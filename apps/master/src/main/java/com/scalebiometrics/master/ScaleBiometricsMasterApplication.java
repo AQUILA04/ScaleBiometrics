@@ -16,6 +16,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * - Implement leader election for high availability
  */
 @SpringBootApplication
+@org.springframework.cloud.client.discovery.EnableDiscoveryClient
+@org.springframework.scheduling.annotation.EnableScheduling
 @EnableAsync
 public class ScaleBiometricsMasterApplication {
 

@@ -16,6 +16,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * - Consume Kafka events for template updates
  */
 @SpringBootApplication
+@org.springframework.cloud.client.discovery.EnableDiscoveryClient
 @EnableAsync
 public class ScaleBiometricsWorkerApplication {
 

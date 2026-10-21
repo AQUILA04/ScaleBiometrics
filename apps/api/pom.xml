@@ -8,13 +8,13 @@
     <parent>
         <groupId>com.scalebiometrics</groupId>
         <artifactId>scalebiometrics-parent</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <groupId>com.scalebiometrics</groupId>
     <artifactId>api</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
     <name>ScaleBiometrics API</name>
     <description>National-grade biometric deduplication SaaS platform</description>
 

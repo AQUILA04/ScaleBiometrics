@@ -5,6 +5,16 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   
+  cloud:
+    consul:
+      host: ${CONSUL_HOST:localhost}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        enabled: true
+        register: false # Master doesn't need to be discovered by workers, it only discovers them
+        health-check-path: /api/actuator/health
+        health-check-interval: 10s
+  
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:scalebiometrics}
     username: ${DB_USER:scalebiometrics}
